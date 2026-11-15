@@ -6,8 +6,10 @@
         "description": "Määritä tietolähteet ja akun parametrit.",
         "data": {
           "emaldo_entry_id": "Emaldo-akkulaite",
-          "price_source": "Hintatietolähde (emaldo = Emaldon sisäinen, sensor = ulkoinen anturi)",
-          "spot_price_sensor": "Nordpoolin spot-hintasensori (vain kun lähteenä on 'sensor')",
+          "price_source": "Ostohinnan lähde",
+          "spot_price_sensor": "Ostohinnan sensori tai input_number",
+          "sell_price_source": "Myyntihinnan lähde",
+          "sell_price_sensor": "Myyntihinnan sensori tai input_number",
           "currency": "Valuutan ohitus (ISO 4217, esim. SEK; tyhjä = automaattinen)",
           "solcast_today_sensor": "Solcastin tämän päivän ennustesensori",
           "transfer_fee_buy": "Verkonsiirtomaksu (per kWh)",
@@ -60,6 +62,11 @@
           "enable_pv_cut_when_full_description": "When the battery is at full SoC with solar surplus, turn Third Party PV off so Emaldo stops its top-off charge pulses (which start the cooling fan ~100-150 times per sunny day). PV resumes when SoC drops below the resume threshold, solar fades, or a charge slot needs it. Default off. Harmless on systems without third-party PV: it only acts when PV is present and the battery cannot absorb another kWh (issue #28).",
           "pv_cut_resume_soc": "Resume third-party PV below this SoC (%)",
           "pv_cut_resume_soc_description": "SoC threshold at which third-party PV is switched back on after a full-battery cut. Default 97."
+        },
+        "data_description": {
+          "spot_price_sensor": "Entiteettitunnus, esim. input_number.sopimushinta, kun ostohinnan lähde on sensor. Syötä hinta ulkoiseen entiteettiin, ei tähän. Yksikötön arvo on valuuttaa/kWh. Käytä ALV-kerrointa 1, jos hinta sisältää jo ALV:n.",
+          "sell_price_source": "same as input source käyttää ostohinnan lähdettä (oletus). emaldo käyttää akun hintadataa ja sensor erillistä entiteettiä. Myyntiprovisio vähennetään valitusta hinnasta.",
+          "sell_price_sensor": "Entiteettitunnus, kun myyntihinnan lähde on sensor. Ennuste luetaan aikaleimatuista data-riveistä. Pelkkä numeroarvo ilman ennusteattribuutteja oletetaan kiinteäksi, kunnes se muuttuu."
         }
       }
     },
@@ -89,8 +96,10 @@
         "description": "Battery Optimizerin asetukset. Tehollinen suunniteltu SoC-alue: {effective_band}.",
         "data": {
           "emaldo_entry_id": "Emaldo-akkulaite",
-          "price_source": "Hintatietolähde (emaldo = Emaldon sisäinen, sensor = ulkoinen anturi)",
-          "spot_price_sensor": "Nordpoolin spot-hintasensori (vain kun lähteenä on 'sensor')",
+          "price_source": "Ostohinnan lähde",
+          "spot_price_sensor": "Ostohinnan sensori tai input_number",
+          "sell_price_source": "Myyntihinnan lähde",
+          "sell_price_sensor": "Myyntihinnan sensori tai input_number",
           "currency": "Valuutan ohitus (ISO 4217, esim. SEK; tyhjä = automaattinen)",
           "solcast_today_sensor": "Solcastin tämän päivän ennustesensori",
           "solcast_tomorrow_sensor": "Solcastin huomisen ennustesensori",
@@ -168,6 +177,11 @@
           "enable_pv_cut_when_full_description": "When the battery is at full SoC with solar surplus, turn Third Party PV off so Emaldo stops its top-off charge pulses (which start the cooling fan ~100-150 times per sunny day). PV resumes when SoC drops below the resume threshold, solar fades, or a charge slot needs it. Default off. Harmless on systems without third-party PV: it only acts when PV is present and the battery cannot absorb another kWh (issue #28).",
           "pv_cut_resume_soc": "Resume third-party PV below this SoC (%)",
           "pv_cut_resume_soc_description": "SoC threshold at which third-party PV is switched back on after a full-battery cut. Default 97."
+        },
+        "data_description": {
+          "spot_price_sensor": "Entiteettitunnus, esim. input_number.sopimushinta, kun ostohinnan lähde on sensor. Syötä hinta ulkoiseen entiteettiin, ei tähän. Yksikötön arvo on valuuttaa/kWh. Käytä ALV-kerrointa 1, jos hinta sisältää jo ALV:n.",
+          "sell_price_source": "same as input source käyttää ostohinnan lähdettä (oletus). emaldo käyttää akun hintadataa ja sensor erillistä entiteettiä. Myyntiprovisio vähennetään valitusta hinnasta.",
+          "sell_price_sensor": "Entiteettitunnus, kun myyntihinnan lähde on sensor. Ennuste luetaan aikaleimatuista data-riveistä. Pelkkä numeroarvo ilman ennusteattribuutteja oletetaan kiinteäksi, kunnes se muuttuu."
         }
       }
     }

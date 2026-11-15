@@ -1989,3 +1989,26 @@ Full release history: [CHANGES.md](CHANGES.md).
 - **Issues & feature requests:** [GitHub Issues](https://github.com/wertigpar/ha-battery-optimizer/issues)
 - **Repository:** [github.com/wertigpar/ha-battery-optimizer](https://github.com/wertigpar/ha-battery-optimizer)
 
+
+## Separate import and export energy prices
+
+Import price source remains **emaldo** or **sensor**. Export price source offers
+**same as input source** (default), **emaldo**, and **sensor**. Existing installations
+continue to use their import source for exports until this option is changed.
+
+For a fixed import contract, select sensor and enter an entity ID such as
+`input_number.contract_price`. Set its value in Home Assistant. No static price
+field is added to the optimizer. Numeric sensors/helpers without forecast
+attributes are treated as fixed prices across the planning horizon, and changes
+trigger replanning. Unitless values mean the integration currency/kWh; cents/kWh
+and currency/MWh are converted for numeric helpers. Forecast sensors continue
+to use the existing timestamped `data` format. A current-price-only market sensor
+cannot provide future market prices: use a forecast sensor for that purpose.
+
+For exports, select emaldo to reuse the linked battery's existing price reader,
+or sensor and a separate forecast entity. Import VAT and transfer fees apply
+only to purchases; the sales commission is deducted from the export energy price.
+Use VAT multiplier 1 if the import entity already includes VAT. All price sources
+must use the same currency. A missing selected export source stops a new plan
+instead of silently substituting the import contract price. Tomorrow is included
+only when both sources provide it. The cost-capture cache uses these same prices.

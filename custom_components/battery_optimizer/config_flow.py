@@ -35,6 +35,9 @@ from homeassistant.helpers.selector import (
 from .const import (
     DOMAIN,
     SUBENTRY_TYPE_RULE,
+    CONF_SELL_PRICE_SOURCE,
+    CONF_SELL_PRICE_SENSOR,
+    PRICE_SOURCE_IMPORT,
     CONF_SPOT_SENSOR,
     CONF_SOLCAST_TODAY,
     CONF_SOLCAST_TOMORROW,
@@ -277,6 +280,22 @@ class _OptionalNumberSelector(NumberSelector):
         return super().__call__(data)
 
 
+def _price_errors(hass: HomeAssistant, values: dict[str, Any]) -> dict[str, str]:
+    """Validate only the sensors selected by the import/export source fields."""
+    errors = {}
+    for source_key, sensor_key, default in (
+        (CONF_PRICE_SOURCE, CONF_SPOT_SENSOR, DEFAULT_PRICE_SOURCE),
+        (CONF_SELL_PRICE_SOURCE, CONF_SELL_PRICE_SENSOR, PRICE_SOURCE_IMPORT),
+    ):
+        if values.get(source_key, default) != PRICE_SOURCE_SENSOR:
+            continue
+        entity_id = str(values.get(sensor_key) or "").strip()
+        values[sensor_key] = entity_id
+        if not entity_id or not hass.states.get(entity_id):
+            errors[sensor_key] = "sensor_not_found"
+    return errors
+
+
 def _build_schema(
     defaults: dict[str, Any] | None = None,
     emaldo_options: dict[str, str] | None = None,
@@ -359,6 +378,15 @@ def _build_schema(
                 default=price_source,
             ): vol.In([PRICE_SOURCE_EMALDO, PRICE_SOURCE_SENSOR]),
             **spot_sensor_field,
+            vol.Optional(
+                CONF_SELL_PRICE_SOURCE,
+                default=d.get(CONF_SELL_PRICE_SOURCE, PRICE_SOURCE_IMPORT),
+            ): vol.In({
+                PRICE_SOURCE_IMPORT: "same as input source",
+                PRICE_SOURCE_EMALDO: "emaldo",
+                PRICE_SOURCE_SENSOR: "sensor",
+            }),
+            vol.Optional(CONF_SELL_PRICE_SENSOR, default=d.get(CONF_SELL_PRICE_SENSOR, "")): str,
             vol.Optional(
                 CONF_CURRENCY,
                 default=d.get(CONF_CURRENCY, ""),
@@ -967,11 +995,7 @@ class BatteryOptimizerConfigFlow(ConfigFlow, domain=DOMAIN):
         emaldo_options = _get_emaldo_options(self.hass)
 
         if user_input is not None:
-            # Only validate spot sensor if external sensor source is selected
-            if user_input.get(CONF_PRICE_SOURCE) == PRICE_SOURCE_SENSOR:
-                sensor_id = user_input.get(CONF_SPOT_SENSOR, "")
-                if not sensor_id or not self.hass.states.get(sensor_id):
-                    errors["base"] = "sensor_not_found"
+            errors.update(_price_errors(self.hass, user_input))
 
             currency_error = _currency_error(user_input)
             if currency_error:
@@ -1020,7 +1044,7 @@ class BatteryOptimizerOptionsFlow(OptionsFlowWithConfigEntry):
             return f"{eff_min:.0f}–{eff_max:.0f} %"
 
         if user_input is not None:
-            errors: dict[str, str] = {}
+            errors: dict[str, str] = _price_errors(self.hass, user_input)
             sensor_id = user_input.get(CONF_SOLAR_ACTUAL_SENSOR, "")
             if sensor_id and not self.hass.states.get(sensor_id):
                 errors["base"] = "sensor_not_found"
@@ -1034,7 +1058,7 @@ class BatteryOptimizerOptionsFlow(OptionsFlowWithConfigEntry):
                 return self.async_show_form(
                     step_id="init",
                     data_schema=_build_schema(
-                        cur, emaldo_options=emaldo_options, money=money
+                        {**cur, **user_input}, emaldo_options=emaldo_options, money=money
                     ),
                     errors=errors,
                     description_placeholders={

@@ -6,8 +6,10 @@
         "description": "Configure data sources and battery parameters.",
         "data": {
           "emaldo_entry_id": "Emaldo battery device",
-          "price_source": "Price data source (emaldo = Emaldo internal, sensor = external sensor)",
-          "spot_price_sensor": "Nordpool spot price sensor (only when source is 'sensor')",
+          "price_source": "Import price source",
+          "spot_price_sensor": "Import price sensor or input_number",
+          "sell_price_source": "Export price source",
+          "sell_price_sensor": "Export price sensor or input_number",
           "currency": "Currency override (ISO 4217 code, e.g. SEK; blank = auto)",
           "solcast_today_sensor": "Solcast today forecast sensor",
           "solar_forecast_source": "PV forecast source (solcast = external forecast sensor, emaldo = the Emaldo unit's own solar forecast)",
@@ -61,6 +63,11 @@
            "enable_pv_cut_when_full_description": "When the battery is at full SoC with solar surplus, turn Third Party PV off so Emaldo stops its top-off charge pulses (which start the cooling fan ~100-150 times per sunny day). PV resumes when SoC drops below the resume threshold, solar fades, or a charge slot needs it. Default off. Harmless on systems without third-party PV: it only acts when PV is present and the battery cannot absorb another kWh (issue #28).",
            "pv_cut_resume_soc": "Resume third-party PV below this SoC (%)",
            "pv_cut_resume_soc_description": "SoC threshold at which third-party PV is switched back on after a full-battery cut. Default 97."
+        },
+        "data_description": {
+          "spot_price_sensor": "Entity ID used when import source is sensor, e.g. input_number.contract_price. Enter the energy price in the external entity, not here. Unitless values are currency/kWh; use VAT multiplier 1 if the value already includes VAT.",
+          "sell_price_source": "same as input source shares the import source (default). Choose emaldo for battery price data or sensor for an independent entity. Sales commission is deducted from the selected price.",
+          "sell_price_sensor": "Entity ID used only when export source is sensor. Forecast sensors use timestamped data entries; a numeric entity without forecast attributes is treated as a fixed price until it changes."
         }
       }
     },
@@ -90,8 +97,10 @@
         "description": "Options for Battery Optimizer. Effective planned SoC band: {effective_band}.",
         "data": {
           "emaldo_entry_id": "Emaldo battery device",
-          "price_source": "Price data source (emaldo = Emaldo internal, sensor = external sensor)",
-          "spot_price_sensor": "Nordpool spot price sensor (only when source is 'sensor')",
+          "price_source": "Import price source",
+          "spot_price_sensor": "Import price sensor or input_number",
+          "sell_price_source": "Export price source",
+          "sell_price_sensor": "Export price sensor or input_number",
           "currency": "Currency override (ISO 4217 code, e.g. SEK; blank = auto)",
           "solcast_today_sensor": "Solcast today forecast sensor",
           "solar_forecast_source": "PV forecast source (solcast = external forecast sensor, emaldo = the Emaldo unit's own solar forecast)",
@@ -170,6 +179,11 @@
            "enable_pv_cut_when_full_description": "When the battery is at full SoC with solar surplus, turn Third Party PV off so Emaldo stops its top-off charge pulses (which start the cooling fan ~100-150 times per sunny day). PV resumes when SoC drops below the resume threshold, solar fades, or a charge slot needs it. Default off. Harmless on systems without third-party PV: it only acts when PV is present and the battery cannot absorb another kWh (issue #28).",
            "pv_cut_resume_soc": "Resume third-party PV below this SoC (%)",
            "pv_cut_resume_soc_description": "SoC threshold at which third-party PV is switched back on after a full-battery cut. Default 97."
+        },
+        "data_description": {
+          "spot_price_sensor": "Entity ID used when import source is sensor, e.g. input_number.contract_price. Enter the energy price in the external entity, not here. Unitless values are currency/kWh; use VAT multiplier 1 if the value already includes VAT.",
+          "sell_price_source": "same as input source shares the import source (default). Choose emaldo for battery price data or sensor for an independent entity. Sales commission is deducted from the selected price.",
+          "sell_price_sensor": "Entity ID used only when export source is sensor. Forecast sensors use timestamped data entries; a numeric entity without forecast attributes is treated as a fixed price until it changes."
         }
       }
     }
