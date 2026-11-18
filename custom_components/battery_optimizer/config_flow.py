@@ -25,6 +25,8 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.selector import (
     DateSelector,
+    EntitySelector,
+    EntitySelectorConfig,
     NumberSelector,
     NumberSelectorConfig,
     NumberSelectorMode,
@@ -71,6 +73,7 @@ from .const import (
     CONF_OPTIMIZER_INTERVAL,
     CONF_EMALDO_ENTRY_ID,
     CONF_AUTO_BASE_LOAD,
+    CONF_EXCLUDED_LOAD_SENSOR,
     CONF_LOAD_ENERGY_SENSOR,
     CONF_ENABLE_PV_STRATEGY,
     CONF_SOLAR_SELL_MIN_FORECAST_KWH,
@@ -287,6 +290,20 @@ def _transfer_price_errors(hass: HomeAssistant, values: dict[str, Any]) -> dict[
     values[CONF_TRANSFER_FEE_SENSOR] = sensor
     if sensor and not hass.states.get(sensor):
         return {CONF_TRANSFER_FEE_SENSOR: "sensor_not_found"}
+    return {}
+
+
+def _excluded_load_errors(hass: HomeAssistant, values: dict[str, Any]) -> dict[str, str]:
+    # An empty option must also override a sensor saved during initial setup.
+    sensor = values.setdefault(CONF_EXCLUDED_LOAD_SENSOR, "")
+    if not sensor:
+        return {}
+    state = hass.states.get(sensor)
+    if state is None:
+        return {CONF_EXCLUDED_LOAD_SENSOR: "sensor_not_found"}
+    if (sensor == values.get(CONF_LOAD_ENERGY_SENSOR)
+            or state.attributes.get("unit_of_measurement") not in ("W", "kW")):
+        return {CONF_EXCLUDED_LOAD_SENSOR: "invalid_excluded_load"}
     return {}
 
 
@@ -521,6 +538,11 @@ def _build_schema(
                 CONF_LOAD_ENERGY_SENSOR,
                 default=d.get(CONF_LOAD_ENERGY_SENSOR, DEFAULT_LOAD_ENERGY_SENSOR),
             ): str,
+            vol.Optional(
+                CONF_EXCLUDED_LOAD_SENSOR,
+                description={"suggested_value": d[CONF_EXCLUDED_LOAD_SENSOR]}
+                if d.get(CONF_EXCLUDED_LOAD_SENSOR) else {},
+            ): EntitySelector(EntitySelectorConfig(domain="sensor")),
             vol.Optional(
                 CONF_ENABLE_PV_STRATEGY,
                 default=d.get(CONF_ENABLE_PV_STRATEGY, DEFAULT_ENABLE_PV_STRATEGY),
@@ -1008,6 +1030,7 @@ class BatteryOptimizerConfigFlow(ConfigFlow, domain=DOMAIN):
             errors.update(_price_errors(self.hass, user_input))
 
             errors.update(_transfer_price_errors(self.hass, user_input))
+            errors.update(_excluded_load_errors(self.hass, user_input))
             currency_error = _currency_error(user_input)
             if currency_error:
                 errors[CONF_CURRENCY] = currency_error
@@ -1060,6 +1083,7 @@ class BatteryOptimizerOptionsFlow(OptionsFlowWithConfigEntry):
             if sensor_id and not self.hass.states.get(sensor_id):
                 errors["base"] = "sensor_not_found"
             errors.update(_transfer_price_errors(self.hass, user_input))
+            errors.update(_excluded_load_errors(self.hass, user_input))
             currency_error = _currency_error(user_input)
             if currency_error:
                 errors[CONF_CURRENCY] = currency_error

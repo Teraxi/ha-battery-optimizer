@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import replace
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 import json
 import logging
 import math
@@ -85,6 +85,7 @@ from .const import (
     CONF_OPTIMIZER_INTERVAL,
     CONF_EMALDO_ENTRY_ID,
     CONF_AUTO_BASE_LOAD,
+    CONF_EXCLUDED_LOAD_SENSOR,
     CONF_LOAD_ENERGY_SENSOR,
     CONF_ENABLE_PV_STRATEGY,
     CONF_SOLAR_SELL_MIN_FORECAST_KWH,
@@ -1785,12 +1786,45 @@ class BatteryOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     # ── Auto base load ────────────────────────────────────────────────
 
+    @staticmethod
+    def _net_daily_load_kw(total_rows, excluded_rows, midnight: datetime) -> list[float]:
+        """Average matched hourly watts over complete local calendar days."""
+        def by_hour(rows):
+            return {
+                row["start"]: row["mean"]
+                for row in rows
+                if row.get("start") is not None
+                and isinstance(row.get("mean"), (int, float))
+                and math.isfinite(row["mean"])
+            }
+
+        total = by_hour(total_rows)
+        excluded = by_hour(excluded_rows)
+        daily = []
+        for offset in range(14, 0, -1):
+            day = midnight - timedelta(days=offset)
+            start = int(day.timestamp())
+            end = int((day + timedelta(days=1)).timestamp())
+            # Recorder bins start on UTC hours. Weight overlaps for time zones
+            # with fractional offsets and use elapsed time across DST changes.
+            hours = range(start - start % 3600, end, 3600)
+            if not all(hour in total and hour in excluded for hour in hours):
+                continue
+            watt_seconds = 0.0
+            for hour in hours:
+                seconds = min(end, hour + 3600) - max(start, hour)
+                net_watts = max(0.0, total[hour] - max(0.0, excluded[hour]))
+                watt_seconds += net_watts * seconds
+            daily.append(watt_seconds / (end - start) / 1000)
+        return daily
+
     async def _fetch_auto_base_load_kw(self) -> float:
         """Return auto-tuned base load kW from 14-day HA recorder statistics.
 
-        Queries the daily ``mean`` of the configured household load power sensor
+        Uses matched hourly means when excluding a load, otherwise the daily
+        ``mean`` of the configured household load power sensor
         (W, ``state_class: measurement``) over the last 14 days, converts to kW,
-        and returns the 7-day rolling average clamped to ±50 % of the configured
+        and returns the 7-day rolling average clamped to 0.5–2 times the configured
         ``base_load_kw``.
 
         Configure with a combined household load power sensor in Watts, e.g.
@@ -1821,16 +1855,24 @@ class BatteryOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return configured
 
         now = dt_util.now()
+        excluded = self.config.get(CONF_EXCLUDED_LOAD_SENSOR)
+        midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
         start = now - timedelta(days=14)
+        end = None
+        if excluded:
+            start = (midnight - timedelta(days=14)).astimezone(timezone.utc).replace(minute=0)
+            end = midnight.astimezone(timezone.utc)
+            if end.minute:
+                end = end.replace(minute=0) + timedelta(hours=1)
         try:
             stats = await get_instance(self.hass).async_add_executor_job(
                 statistics_during_period,
                 self.hass,
                 start,
-                None,
-                {load_sensor},
-                "day",
-                None,
+                end,
+                {load_sensor, excluded} if excluded else {load_sensor},
+                "hour" if excluded else "day",
+                {"power": "W"} if excluded else None,
                 {"mean"},
             )
         except Exception:
@@ -1841,7 +1883,10 @@ class BatteryOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         rows = stats.get(load_sensor, [])
         # mean is in W; convert to kW and keep only positive (load) values
-        daily_kw = [row["mean"] / 1000.0 for row in rows if row.get("mean") is not None and row["mean"] > 0]
+        if excluded:
+            daily_kw = self._net_daily_load_kw(rows, stats.get(excluded, []), midnight)
+        else:
+            daily_kw = [row["mean"] / 1000.0 for row in rows if row.get("mean") is not None and row["mean"] > 0]
 
         if len(daily_kw) < 3:
             _LOGGER.debug(

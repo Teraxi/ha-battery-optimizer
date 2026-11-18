@@ -40,6 +40,7 @@
           "rule_retention_days": "Slett autom. dato-regler etter (0 = aldri)",
           "optimizer_interval": "Intervall for optimizerens omberegning i minutter (15/30/60/120). Hvor ofte optimereren beregner tidsplanen på nytt.",
           "auto_base_load": "Automatisk justering av grunnlast fra historikk (bruker sensoren for husholdningens effekt)",
+          "excluded_load_power_sensor": "Effektsensor som trekkes fra husets gjennomsnittslast (valgfri, W eller kW)",
           "load_energy_sensor": "Sensor for husholdningens effekt (W) for automatisk grunnlast (f.eks. sensor.emhass_combined_power)",
           "enable_pv_strategy": "Aktiver PV-salgsstrategi (selg solenergi til nettet i perioder med høye priser i stedet for å lade batteriet)",
           "solar_sell_min_forecast_kwh": "Min. Solcast-prognose for å aktivere PV-salgsstrategien (kWh, standard 10 — hopp over på skyete dager)",
@@ -68,6 +69,7 @@
       }
     },
     "error": {
+      "invalid_excluded_load": "Velg en annen effektsensor i W eller kW enn husets totalforbruk.",
       "sensor_not_found": "En eller flere konfigurerte sensorer ble ikke funnet.",
       "invalid_currency": "Valutaen må være en kode med 3 bokstaver, for eksempel EUR, SEK, NOK eller DKK, eller tom.",
       "invalid_params": "Ugyldige parametere.",
@@ -81,6 +83,7 @@
   },
   "options": {
     "error": {
+      "invalid_excluded_load": "Velg en annen effektsensor i W eller kW enn husets totalforbruk.",
       "sensor_not_found": "En eller flere konfigurerte sensorer ble ikke funnet.",
       "invalid_currency": "Valutaen må være en kode med 3 bokstaver, for eksempel EUR, SEK, NOK eller DKK, eller tom.",
       "invalid_reserved_band": "De reserverte kWh etterlater ingen brukbar bane: senk reservene eller utvid Min/Max SoC.",
@@ -129,6 +132,7 @@
           "rule_retention_days": "Slett autom. dato-regler etter (0 = aldri)",
           "optimizer_interval": "Optimizeromberegningsintervall (15/30/60/120 min)",
           "auto_base_load": "Automatisk justering av grunnlast fra historikk",
+          "excluded_load_power_sensor": "Effektsensor som trekkes fra husets gjennomsnittslast (valgfri, W eller kW)",
           "load_energy_sensor": "Sensor for husholdningens effekt (W, for automatisk grunnlast)",
           "enable_pv_strategy": "Aktiver PV-salgsstrategi",
           "solar_sell_min_forecast_kwh": "Min. solprognose for PV-salgsstrategien (kWh)",

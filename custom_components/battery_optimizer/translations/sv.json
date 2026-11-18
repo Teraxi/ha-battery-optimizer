@@ -40,6 +40,7 @@
           "rule_retention_days": "Ta bort passerade datumsregler automatiskt (0 = aldrig)",
           "optimizer_interval": "Intervall för optimizerens omberäkning i minuter (15/30/60/120). Hur ofta optimeraren beräknar om schemat.",
           "auto_base_load": "Automatisk injustering av baskraft från historik (använder sensorn för hushållets effekt)",
+          "excluded_load_power_sensor": "Effektsensor att dra av från husets medellast (valfri, W eller kW)",
           "load_energy_sensor": "Sensor för hushållets effekt (W) för automatisk baskraft (t.ex. sensor.emhass_combined_power)",
           "enable_pv_strategy": "Aktivera PV-försäljningsstrategi (sälj solenergi till nätet under perioder med höga priser i stället för att ladda batteriet)",
           "solar_sell_min_forecast_kwh": "Min Solcast-prognos för att aktivera PV-försäljningsstrategin (kWh, standard 10 — hoppa över molniga dagar)",
@@ -68,6 +69,7 @@
       }
     },
     "error": {
+      "invalid_excluded_load": "Välj en annan effektsensor i W eller kW än husets totala last.",
       "sensor_not_found": "En eller flera konfigurerade sensorer hittades inte.",
       "invalid_currency": "Valutan måste vara en kod med 3 bokstäver, till exempel EUR, SEK, NOK eller DKK, eller tom.",
       "invalid_params": "Ogiltiga parametrar.",
@@ -81,6 +83,7 @@
   },
   "options": {
     "error": {
+      "invalid_excluded_load": "Välj en annan effektsensor i W eller kW än husets totala last.",
       "sensor_not_found": "En eller flera konfigurerade sensorer hittades inte.",
       "invalid_currency": "Valutan måste vara en kod med 3 bokstäver, till exempel EUR, SEK, NOK eller DKK, eller tom.",
       "invalid_reserved_band": "De reserverade kWh lämnar inget användbart intervall: minska reserverna eller vidga Min/Max SoC.",
@@ -129,6 +132,7 @@
           "rule_retention_days": "Ta bort passerade datumsregler automatiskt (0 = aldrig)",
           "optimizer_interval": "Optimizeromberäkningsintervall (15/30/60/120 min)",
           "auto_base_load": "Automatisk injustering av baskraft från historik",
+          "excluded_load_power_sensor": "Effektsensor att dra av från husets medellast (valfri, W eller kW)",
           "load_energy_sensor": "Sensor för hushållets effekt (W, för automatisk baskraft)",
           "enable_pv_strategy": "Aktivera PV-försäljningsstrategi",
           "solar_sell_min_forecast_kwh": "Min solprognos för PV-försäljningsstrategin (kWh)",

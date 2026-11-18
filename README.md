@@ -314,15 +314,13 @@ The current SoC guard marker is exposed in the **Optimizer Status** and **Schedu
 
 ### Auto Base Load
 
-When **Auto-tune base load** is enabled, the optimizer queries the HA recorder for 14 days of daily statistics from the configured **Household load power sensor** (W), computes a 7-day rolling average, and uses that as the base load for every optimization run.
+Enable **Auto-tune base load** and choose a **Household load power sensor** (W) that includes all household consumption. The optimizer uses its Home Assistant Recorder history to estimate typical household demand.
 
-**How it works:**
+To exclude an irregular load such as an EV charger, select its **power sensor** (W or kW) in the optional field beside the household sensor. The charger must be included in the household reading. Use a sensor that reports zero while idle and provides Recorder mean statistics (normally `state_class: measurement`). A cumulative energy meter in kWh cannot be used in this field.
 
-1. At each optimizer run, `statistics_during_period` is called for the load sensor with `"day"` bucket and `"mean"` statistic.
-2. Daily mean values (W) are converted to kW. Days with no positive data are skipped.
-3. The most recent 7 days of daily average kW are averaged.
-4. The result is clamped to ±50% of the configured static base load (to limit the effect of anomalous days).
-5. The final value is applied for this run and exposed on the **Auto Base Load** sensor.
+With an exclusion, the optimizer subtracts the charger's mean power from the household mean for each matching hour, with a minimum residual of zero. It averages complete local calendar days for which both sensors have hourly statistics. With the field empty, it uses the household sensor's daily means as before.
+
+The optimizer averages the latest seven eligible days (or as few as three) from the last 14 days and limits the estimate to 0.5–2 times the configured base load. The **Auto Base Load** diagnostic sensor shows the value used for scheduling.
 
 **Falls back to the static `base_load_kw` if:**
 - Auto-tune is disabled

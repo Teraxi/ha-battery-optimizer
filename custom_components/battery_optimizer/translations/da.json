@@ -40,6 +40,7 @@
           "rule_retention_days": "Slet autom. dato-regler efter (0 = aldrig)",
           "optimizer_interval": "Interval for optimizerens genberegning i minutter (15/30/60/120). Hvor ofte optimereren beregner tidsplanen på ny.",
           "auto_base_load": "Automatisk justering af grundlast fra historik (bruger sensoren for husholdningens effekt)",
+          "excluded_load_power_sensor": "Effektsensor til fradrag i husets gennemsnitslast (valgfri, W eller kW)",
           "load_energy_sensor": "Sensor for husholdningens effekt (W) til automatisk grundlast (f.eks. sensor.emhass_combined_power)",
           "enable_pv_strategy": "Aktivér PV-salgsstrategi (sælg solenergi til nettet i tidsrum med høje priser i stedet for at oplade batteriet)",
           "solar_sell_min_forecast_kwh": "Min. Solcast-prognose for at aktivere PV-salgsstrategien (kWh, standard 10 — spring over på skyede dage)",
@@ -68,6 +69,7 @@
       }
     },
     "error": {
+      "invalid_excluded_load": "Vælg en anden effektsensor i W eller kW end husets samlede belastning.",
       "sensor_not_found": "En eller flere konfigurerede sensorer blev ikke fundet.",
       "invalid_currency": "Valutaen skal være en kode med 3 bogstaver, for eksempel EUR, SEK, NOK eller DKK, eller tom.",
       "invalid_params": "Ugyldige parametre.",
@@ -81,6 +83,7 @@
   },
   "options": {
     "error": {
+      "invalid_excluded_load": "Vælg en anden effektsensor i W eller kW end husets samlede belastning.",
       "sensor_not_found": "En eller flere konfigurerede sensorer blev ikke fundet.",
       "invalid_currency": "Valutaen skal være en kode med 3 bogstaver, for eksempel EUR, SEK, NOK eller DKK, eller tom.",
       "invalid_reserved_band": "De reserverede kWh efterlader intet brugbart interval: sænk reserverne eller udvid Min/Max SoC.",
@@ -129,6 +132,7 @@
           "rule_retention_days": "Slet autom. dato-regler efter (0 = aldrig)",
           "optimizer_interval": "Interval for optimizerens genberegning (15/30/60/120 min.)",
           "auto_base_load": "Automatisk justering af grundlast fra historik",
+          "excluded_load_power_sensor": "Effektsensor til fradrag i husets gennemsnitslast (valgfri, W eller kW)",
           "load_energy_sensor": "Sensor for husholdningens effekt (W, til automatisk grundlast)",
           "enable_pv_strategy": "Aktivér PV-salgsstrategi",
           "solar_sell_min_forecast_kwh": "Min. solprognose for PV-salgsstrategi (kWh)",

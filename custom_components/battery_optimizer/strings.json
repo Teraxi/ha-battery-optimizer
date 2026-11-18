@@ -41,6 +41,7 @@
           "rule_retention_days": "Auto-delete passed date rules after (0 = never)",
           "optimizer_interval": "Optimizer re-run interval in minutes (15/30/60/120). How often the optimizer recalculates the schedule.",
           "auto_base_load": "Auto-tune base load from history (uses household load power sensor)",
+          "excluded_load_power_sensor": "Power sensor to subtract from average household load (optional, W or kW)",
           "load_energy_sensor": "Household load power sensor (W) for auto base load (e.g. sensor.emhass_combined_power)",
           "enable_pv_strategy": "Enable PV sell strategy (sell solar to grid during high-price slots instead of charging battery)",
           "solar_sell_min_forecast_kwh": "Min Solcast forecast to activate PV sell strategy (kWh, default 10 — skip on cloudy days)",
@@ -69,6 +70,7 @@
       }
     },
     "error": {
+      "invalid_excluded_load": "Select a power sensor in W or kW other than the total household load.",
       "sensor_not_found": "One or more configured sensors not found.",
       "invalid_currency": "Currency must be a 3-letter code such as EUR, SEK, NOK or DKK, or empty.",
       "invalid_params": "Invalid parameters.",
@@ -82,6 +84,7 @@
   },
   "options": {
     "error": {
+      "invalid_excluded_load": "Select a power sensor in W or kW other than the total household load.",
       "sensor_not_found": "One or more configured sensors not found.",
       "invalid_currency": "Currency must be a 3-letter code such as EUR, SEK, NOK or DKK, or empty.",
       "invalid_reserved_band": "The reserved capacity leaves no usable band: lower the reserves or widen Min/Max SoC.",
@@ -131,6 +134,7 @@
           "rule_retention_days": "Auto-delete passed date rules after (0 = never)",
           "optimizer_interval": "Optimizer re-run interval (15/30/60/120 min)",
           "auto_base_load": "Auto-tune base load from history",
+          "excluded_load_power_sensor": "Power sensor to subtract from average household load (optional, W or kW)",
           "load_energy_sensor": "Household load power sensor (W, for auto base load)",
           "enable_pv_strategy": "Enable PV sell strategy",
           "solar_sell_min_forecast_kwh": "Min solar forecast for PV sell strategy (kWh)",
