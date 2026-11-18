@@ -15,6 +15,7 @@ import logging
 import math
 from dataclasses import dataclass, field
 
+from .export_cycle import ExportCycle, plan_export_cycle
 from .const import (
     SLOT_NO_OVERRIDE,
     SLOT_IDLE,
@@ -105,6 +106,7 @@ class BatteryConfig:
 
     # Optional per-slot tariffs for the complete optimization horizon.
     transfer_fees: list[float] = field(default_factory=list)
+    fund_grid_exports: bool = False
 
     def transfer_fee_at(self, slot: int) -> float:
         """Use the period's tariff or the configured fixed fee."""
@@ -2045,6 +2047,7 @@ def optimize(
     case_a_floor: float | None = None,
     total_slots: int = SLOTS_PER_DAY,
     enable_forced_sell: bool = True,
+    _export_cycle: ExportCycle | None = None,
 ) -> OptimizationResult:
     """Run greedy optimization over a requested slot horizon.
 
@@ -2924,6 +2927,12 @@ def optimize(
         total_slots=n, charge_targets=guard_charge_targets,
     )
 
+    if _export_cycle is not None:
+        plan_actions = {i: "charge" for i in _export_cycle.charge}
+        plan_actions.update(dict.fromkeys(_export_cycle.sell, "force_sell"))
+        guard_charge_targets = _export_cycle.charge
+        safeguard_slots = []
+
     # Step 4: Build the result
     # NOTE: the SoC trajectory below is intentionally NOT clamped at soc_min.
     # Idle drain genuinely pulls the battery below the configured floor when
@@ -3036,6 +3045,17 @@ def optimize(
                 actual_grid_kwh = actual_bat_kwh / cfg.charge_efficiency
                 actual_grid_kwh += max(net_loads[s], 0) * SLOT_DURATION_HOURS
                 n_charge += 1
+            elif action == "force_sell" and _export_cycle is not None:
+                sold = _export_cycle.sell[s]
+                load = net_loads[s] * SLOT_DURATION_HOURS
+                runtime = sold / (cfg.max_discharge_per_slot_kwh - load)
+                slot_cycled_kwh = cfg.max_discharge_per_slot_kwh * runtime / cfg.discharge_efficiency
+                cycled_kwh += slot_cycled_kwh
+                soc -= slot_cycled_kwh + idle_drain
+                actual_grid_kwh = load * (1 - runtime)
+                export_kwh = sold
+                slot_value = SLOT_IDLE
+                n_discharge += 1
             elif action == "charge_floor":
                 # Keep-alive charge: "charge to N%" byte stops at the floor
                 # target, so only the deficit energy is bought from the grid.
@@ -3188,7 +3208,9 @@ def optimize(
             load_kw=cfg.base_load_kw,
             soc_after=soc / cfg.capacity_kwh * 100.0,
             profit=profit,
-            export_kwh=export_kwh,
+            export_kwh=0.0 if action == "force_sell" else export_kwh,
+            sell_kwh=export_kwh if action == "force_sell" else 0.0,
+            sell_source="battery" if action == "force_sell" else "",
             grid_import_kwh=actual_grid_kwh,
             grid_export_kwh=export_kwh,
             import_energy_cost=g_ie * actual_grid_kwh,
@@ -3210,7 +3232,7 @@ def optimize(
     # them first and feed the per-slot flag into the device simulation (this
     # benchmark = "what the internal plan costs GIVEN our PV handling").
     pv_flags: list[bool] = [True] * n
-    if enable_pv_strategy:
+    if enable_pv_strategy and _export_cycle is None:
         pv_flags = _plan_pv_sell_slots(
             cfg, result_slots, solar_15min, buy_prices, sell_prices,
             start_slot=start_slot,
@@ -3435,6 +3457,23 @@ def optimize(
 
     result.thirdparty_pv_slots = pv_flags
 
+    if _export_cycle is not None:
+        result.sell_slots = sorted(_export_cycle.sell)
+        result.sell_target_kwh = sum(_export_cycle.sell.values())
+        result.sell_revenue = sum(sell_prices[i] * kwh for i, kwh in _export_cycle.sell.items())
+        result.sell_profit = _export_cycle.margin
+        if day1_totals is not None:
+            today = result.sell_slots[0] < SLOTS_PER_DAY
+            for key in ("sell_target_kwh", "sell_revenue", "sell_profit"):
+                day1_totals[key] = getattr(result, key) if today else 0.0
+        result.day1_totals = day1_totals
+        result.trace["grid_funded_export"] = {
+            "charge_slots": list(_export_cycle.charge),
+            "sell_slots": result.sell_slots,
+            "incremental_margin": result.sell_profit,
+        }
+        return result
+
     # ── Forced (manual) sell: battery-only peak arbitrage ──
     # The guard is `enable_forced_sell and not _probe`, and BOTH halves do
     # real work -- they are not two spellings of the same thing (B2):
@@ -3465,6 +3504,22 @@ def optimize(
     # rather than smuggled in under a recursion-guard label.
     sell_plan: dict[int, tuple[float, str]] = {}
     gate_margin = 0.0
+    if (enable_forced_sell and not _probe and cfg.fund_grid_exports
+            and cfg.forced_sell_enabled and all(pv_flags[start_slot:])):
+        cycle = plan_export_cycle(
+            buy_prices, sell_prices, solar_15min, cfg, start_slot, current_soc_kwh,
+            result_slots[-1].soc_after * cfg.capacity_kwh / 100.0,
+            result.net_profit, _FORCED_SELL_RESERVE_KWH,
+        )
+        if cycle is not None:
+            # Use the same slot accounting and day-boundary snapshots as the
+            # ordinary plan. This pass materializes the chosen cycle only.
+            return optimize(
+                buy_prices, sell_prices, solar_15min, cfg, start_slot=start_slot,
+                initial_soc_pct=initial_soc_pct, emaldo_modes=emaldo_modes,
+                total_slots=n, enable_night_drain=False, enable_forced_sell=False,
+                _export_cycle=cycle,
+            )
     if enable_forced_sell and not _probe:
         sell_plan = _plan_forced_sell_slots(
             cfg,

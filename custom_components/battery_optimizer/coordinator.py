@@ -144,6 +144,7 @@ from .const import (
     IDLE_FULL_CONTROL,
     IDLE_SOLAR_GUARD,
     IDLE_SMART_OVERRIDE,
+    CONF_FUND_GRID_EXPORTS,
     CONF_FORCED_SELL_ENABLED,
     CONF_FORCED_SELL_MAX_KWH_PD,
     CONF_FORCED_SELL_MIN_PROFIT,
@@ -1132,6 +1133,7 @@ class BatteryOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             soc_recovery_buffer_pct=c.get(
                 CONF_SOC_RECOVERY_BUFFER, DEFAULT_SOC_RECOVERY_BUFFER_PCT
             ),
+            fund_grid_exports=c.get(CONF_FUND_GRID_EXPORTS, False),
             forced_sell_enabled=c.get(
                 CONF_FORCED_SELL_ENABLED, DEFAULT_FORCED_SELL_ENABLED
             ),
@@ -3167,6 +3169,11 @@ class BatteryOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             r.action != "optimizer" or r.level != LEVEL_DEFAULT
             for r in user_rules
         )
+        # These layers rewrite the schedule after optimization. A funded trade
+        # requires its charge and sell commands to survive as a pair.
+        if (has_user_rules or self.config.get(CONF_PRECHARGE_ENABLED, False)
+                or self.config.get(CONF_CHEAP_CHARGE_ENABLED, False)):
+            cfg.fund_grid_exports = False
         solar_tomorrow: list[float] | None = None
         previous_result_tomorrow = self._last_result_tomorrow
         if prices_tomorrow is not None:

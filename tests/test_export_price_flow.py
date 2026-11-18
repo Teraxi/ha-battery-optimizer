@@ -36,6 +36,8 @@ def test_export_selector_roundtrip(source):
     assert fields[c.CONF_PRICE_SOURCE]["options"] == expected_options
     assert schema(defaults)[c.CONF_SPOT_SENSOR] == "input_number.contract"
     assert "static_price" not in fields
+    assert fields[c.CONF_FUND_GRID_EXPORTS]["default"] is False
+    assert schema({**defaults, c.CONF_FUND_GRID_EXPORTS: True})[c.CONF_FUND_GRID_EXPORTS]
 
 
 def test_default_and_active_sensor_validation():

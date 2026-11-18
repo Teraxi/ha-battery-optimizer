@@ -144,6 +144,7 @@ from .const import (
     DEFAULT_RULE_RETENTION_DAYS,
     RULE_RETENTION_OPTIONS,
     SOLAR_SCALE_MAX,
+    CONF_FUND_GRID_EXPORTS,
     CONF_FORCED_SELL_ENABLED,
     CONF_FORCED_SELL_MAX_KWH_PD,
     CONF_FORCED_SELL_MIN_PROFIT,
@@ -695,6 +696,7 @@ def _build_schema(
                     CONF_FORCED_SELL_ENABLED, DEFAULT_FORCED_SELL_ENABLED
                 ),
             ): bool,
+            vol.Optional(CONF_FUND_GRID_EXPORTS, default=d.get(CONF_FUND_GRID_EXPORTS, False)): bool,
             vol.Optional(
                 CONF_FORCED_SELL_MAX_KWH_PD,
                 default=d.get(

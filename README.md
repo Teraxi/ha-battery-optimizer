@@ -2054,3 +2054,30 @@ is deducted from exports. If an import helper already includes VAT, set the
 VAT multiplier to 1. Use the same currency for all sources. Tomorrow is included
 only when import, export, and any selected transfer forecast are available.
 Changes to either energy source or the transfer tariff trigger replanning.
+
+### Buying before a known export opportunity
+
+Enable **Charge from the grid for a later profitable export** together with
+**Enable forced sell** to compare earlier grid purchases with a later battery
+sale. Both today-only and continuous today/tomorrow forecasts work. The
+planner uses the effective import tariff and net feed-in price for each
+quarter. It compares sell windows, including buying nothing, and ranks
+qualifying cycles by total incremental euros over the ordinary household plan.
+The configured minimum profit applies per exported kWh. A lower final battery
+charge than the comparison plan is valued at the cost of replacing it. The
+trace records the selected charge and sell slots and their estimated margin.
+
+The search models one continuous manual sale on one calendar day, at full
+inverter output until the whole-kWh grid export target is reached. Household
+load uses part of that output. Grid charging can span multiple earlier cheap
+quarters, including the previous night. It respects the configured SoC band,
+standby consumption, forced-sell reserve, efficiencies, wear, power limits
+and sell cap. A full charge is useful only if enough of it can be sold at a
+profit. This is a bounded search over charge schedules and sell windows, not
+a global optimizer over arbitrary sequences of charge/discharge actions.
+
+The option defaults to off. It targets net-import days (forecast generation
+at or below household load throughout the remaining known horizon). The
+existing planner handles forecast solar surpluses and PV-switch windows.
+Custom schedule rules and either of the separate speculative/cheap charging
+options take precedence because they can overwrite one side of a trade.

@@ -275,6 +275,7 @@ IDLE_SMART_OVERRIDE = "smart_override"
 DEFAULT_IDLE_STRATEGY = IDLE_FULL_CONTROL
 
 # ── Forced sell (manual sell arbitrage) ─────────────────────────────
+CONF_FUND_GRID_EXPORTS = "fund_grid_exports"
 CONF_FORCED_SELL_ENABLED = "forced_sell_enabled"
 CONF_FORCED_SELL_MAX_KWH_PD = "forced_sell_max_kwh_pd"
 CONF_FORCED_SELL_MIN_PROFIT = "forced_sell_min_profit"

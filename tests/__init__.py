@@ -38,6 +38,7 @@ def load_optimizer():
 
     const = _exec(f"{_PKG_NAME}.const", _SRC_DIR / "const.py")
     pkg.const = const
+    _exec(f"{_PKG_NAME}.export_cycle", _SRC_DIR / "export_cycle.py")
     optimizer = _exec(f"{_PKG_NAME}.optimizer", _SRC_DIR / "optimizer.py")
     pkg.optimizer = optimizer
     return optimizer, const
