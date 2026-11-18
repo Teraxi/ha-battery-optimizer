@@ -255,6 +255,12 @@
       "vat_multiplier": {
         "name": "MVA-multiplikator"
       },
+      "import_price": {
+        "name": "Kjøpspris"
+      },
+      "export_price": {
+        "name": "Salgspris"
+      },
       "grid_transfer_fee": {
         "name": "Nettleie"
       },

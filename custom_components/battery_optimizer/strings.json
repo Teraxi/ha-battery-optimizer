@@ -263,6 +263,12 @@
       "vat_multiplier": {
         "name": "VAT Multiplier"
       },
+      "import_price": {
+        "name": "Import Price"
+      },
+      "export_price": {
+        "name": "Export Price"
+      },
       "grid_transfer_fee": {
         "name": "Grid Transfer Fee"
       },

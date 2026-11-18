@@ -1148,6 +1148,29 @@ class BatteryOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     # ── Data readers ──────────────────────────────────────────────────
 
+    def _current_effective_prices(self) -> tuple[float | None, float | None]:
+        """Return this quarter-hour's prices using the planner's calculation.
+
+        Read today's source instead of the previous run's cache, which may
+        belong to yesterday or remain populated after a source goes missing.
+        """
+        today, _ = self._parse_price_data()
+        if not today:
+            return None, None
+        buy, sell = compute_prices(today, self._build_battery_config())
+        slot = _current_slot_index()
+        return buy[slot], sell[slot]
+
+    @property
+    def current_import_price(self) -> float | None:
+        """Effective import energy price including VAT and grid transfer fees."""
+        return self._current_effective_prices()[0]
+
+    @property
+    def current_export_price(self) -> float | None:
+        """Effective export energy price after the sales commission."""
+        return self._current_effective_prices()[1]
+
     def _parse_price_data(
         self,
     ) -> tuple[list[float] | None, list[float] | None]:

@@ -255,6 +255,12 @@
       "vat_multiplier": {
         "name": "Momsfaktor"
       },
+      "import_price": {
+        "name": "Købspris"
+      },
+      "export_price": {
+        "name": "Salgspris"
+      },
       "grid_transfer_fee": {
         "name": "Nettoverførselsgebyr"
       },

@@ -255,6 +255,12 @@
       "vat_multiplier": {
         "name": "ALV-kerroin"
       },
+      "import_price": {
+        "name": "Sähkön lopullinen ostohinta"
+      },
+      "export_price": {
+        "name": "Sähkön myyntihinta"
+      },
       "grid_transfer_fee": {
         "name": "Verkkosiirtomaksu"
       },

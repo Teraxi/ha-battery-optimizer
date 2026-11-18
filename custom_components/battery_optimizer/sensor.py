@@ -90,6 +90,8 @@ async def async_setup_entry(
         RealizedCostTodaySensor(coordinator, entry),
         VatMultiplierSensor(coordinator, entry),
         GridTransferFeeSensor(coordinator, entry),
+        ImportPriceSensor(coordinator, entry),
+        ExportPriceSensor(coordinator, entry),
         FeedInSalesCommissionSensor(coordinator, entry),
         BatteryWearCostSensor(coordinator, entry),
         ActiveCurrencySensor(coordinator, entry),
@@ -1099,6 +1101,46 @@ class GridTransferFeeSensor(_BaseOptimizerSensor):
     @property
     def native_value(self) -> float | None:
         return self.coordinator.current_transfer_fee
+
+
+class ExportPriceSensor(_BaseOptimizerSensor):
+    """Diagnostic: current export price after the configured sales commission."""
+
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_suggested_display_precision = 4
+    _attr_icon = "mdi:transmission-tower-export"
+
+    def __init__(self, coordinator, entry) -> None:
+        super().__init__(coordinator, entry, "export_price")
+
+    @property
+    def native_unit_of_measurement(self) -> str:
+        return f"{self._currency}/kWh"
+
+    @property
+    def native_value(self) -> float | None:
+        return self.coordinator.current_export_price
+
+
+class ImportPriceSensor(_BaseOptimizerSensor):
+    """Diagnostic: effective import price including VAT and grid transfer fees."""
+
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_suggested_display_precision = 5
+    _attr_icon = "mdi:transmission-tower-import"
+
+    def __init__(self, coordinator, entry) -> None:
+        super().__init__(coordinator, entry, "import_price")
+
+    @property
+    def native_unit_of_measurement(self) -> str:
+        return f"{self._currency}/kWh"
+
+    @property
+    def native_value(self) -> float | None:
+        return self.coordinator.current_import_price
 
 
 class FeedInSalesCommissionSensor(_BaseOptimizerSensor):
