@@ -2076,8 +2076,27 @@ and sell cap. A full charge is useful only if enough of it can be sold at a
 profit. This is a bounded search over charge schedules and sell windows, not
 a global optimizer over arbitrary sequences of charge/discharge actions.
 
-The option defaults to off. It targets net-import days (forecast generation
-at or below household load throughout the remaining known horizon). The
-existing planner handles forecast solar surpluses and PV-switch windows.
-Custom schedule rules and either of the separate speculative/cheap charging
-options take precedence because they can overwrite one side of a trade.
+The option defaults to off. On net-import days the search above handles
+battery exports. With a forecast solar surplus there is also a PV alternative:
+before each surplus period, compare retaining the household schedule, omitting
+ordinary grid charging, and buying in increasing numbers of the cheapest
+earlier quarters. The known horizon can cross midnight. For each candidate
+the planner uses the configured or auto-tuned average household load, the
+forecast PV for each quarter, the effective import and export prices, standby,
+battery limits, efficiency and wear. At a single household meter only net
+surplus earns export revenue. Charging from surplus and exporting it cannot
+both be credited for the same kWh.
+
+The PV alternative compares the existing PV routing, absorbing surplus until
+full, and passing high-price surplus to the grid when its net sale price
+exceeds the purchase price. New PV-switch windows require the PV sell strategy
+and its daily forecast threshold. Purchases must improve the comparison after
+valuing any lower final charge at its replacement cost. The search compares
+one changed pre-charge period at a time and keeps the household discharge
+schedule; it does not promise a global optimum or automatically fill the pack.
+The trace key `solar_prefill` records the chosen pre-charge slots and estimated
+incremental benefit. Solar export does not stage a manual battery sale.
+
+Custom schedule rules and either separate speculative/cheap charging mode
+take precedence. The cut-PV-when-full option also takes precedence over this
+solar alternative, since it can override the simulated PV routing.

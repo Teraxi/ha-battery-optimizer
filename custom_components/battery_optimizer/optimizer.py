@@ -15,6 +15,7 @@ import logging
 import math
 from dataclasses import dataclass, field
 
+from .solar_prefill import SolarPlan, plan_solar_prefill
 from .export_cycle import ExportCycle, plan_export_cycle
 from .const import (
     SLOT_NO_OVERRIDE,
@@ -27,6 +28,7 @@ from .const import (
     DEFAULT_MAX_CHARGE_KW,
     DEFAULT_MAX_DISCHARGE_KW,
     DEFAULT_GRID_CHARGE_SOLAR_AWARE,
+    DEFAULT_SOLAR_SELL_MIN_FORECAST_KWH,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -107,6 +109,8 @@ class BatteryConfig:
     # Optional per-slot tariffs for the complete optimization horizon.
     transfer_fees: list[float] = field(default_factory=list)
     fund_grid_exports: bool = False
+    pv_cut_when_full: bool = False
+    pv_min_forecast_kwh: float = DEFAULT_SOLAR_SELL_MIN_FORECAST_KWH
 
     def transfer_fee_at(self, slot: int) -> float:
         """Use the period's tariff or the configured fixed fee."""
@@ -2048,6 +2052,7 @@ def optimize(
     total_slots: int = SLOTS_PER_DAY,
     enable_forced_sell: bool = True,
     _export_cycle: ExportCycle | None = None,
+    _solar_plan: SolarPlan | None = None,
 ) -> OptimizationResult:
     """Run greedy optimization over a requested slot horizon.
 
@@ -3006,6 +3011,13 @@ def optimize(
         if s < start_slot:
             # Past slots — don't touch
             pass
+        elif _solar_plan is not None:
+            flow = _solar_plan.flows[s - start_slot]
+            action, slot_value, soc, actual_grid_kwh, export_kwh, slot_cycled_kwh = flow
+            cycled_kwh += slot_cycled_kwh
+            n_charge += action in ("charge", "charge_floor")
+            n_discharge += action == "discharge"
+            n_idle += action == "idle"
         elif s in plan_actions:
             action = plan_actions[s]
             if action == "idle" and net_loads[s] < 0:
@@ -3232,7 +3244,9 @@ def optimize(
     # them first and feed the per-slot flag into the device simulation (this
     # benchmark = "what the internal plan costs GIVEN our PV handling").
     pv_flags: list[bool] = [True] * n
-    if enable_pv_strategy and _export_cycle is None:
+    if _solar_plan is not None:
+        pv_flags = _solar_plan.pv_flags
+    elif enable_pv_strategy and _export_cycle is None:
         pv_flags = _plan_pv_sell_slots(
             cfg, result_slots, solar_15min, buy_prices, sell_prices,
             start_slot=start_slot,
@@ -3457,6 +3471,14 @@ def optimize(
 
     result.thirdparty_pv_slots = pv_flags
 
+    if _solar_plan is not None:
+        result.day1_totals = day1_totals
+        result.trace["solar_prefill"] = {
+            "charge_slots": list(_solar_plan.charge_slots),
+            "incremental_margin": _solar_plan.margin,
+        }
+        return result
+
     if _export_cycle is not None:
         result.sell_slots = sorted(_export_cycle.sell)
         result.sell_target_kwh = sum(_export_cycle.sell.values())
@@ -3551,6 +3573,22 @@ def optimize(
             solar_confidence_ratio=solar_confidence_ratio,
             total_slots=n,
         )
+    if (enable_forced_sell and not _probe and cfg.fund_grid_exports
+            and cfg.forced_sell_enabled and not cfg.pv_cut_when_full):
+        solar_plan = plan_solar_prefill(
+            result_slots, solar_15min, cfg, start_slot, current_soc_kwh,
+            pv_flags, gate_margin, enable_pv_strategy,
+        )
+        if solar_plan is not None:
+            return optimize(
+                buy_prices, sell_prices, solar_15min, cfg, start_slot=start_slot,
+                initial_soc_pct=initial_soc_pct, emaldo_modes=emaldo_modes,
+                total_slots=n, enable_night_drain=enable_night_drain,
+                solar_regime_engaged=solar_regime_engaged,
+                future_min_buy=future_min_buy, future_grid_charge_needed=future_grid_charge_needed,
+                solar_confidence_ratio=solar_confidence_ratio,
+                enable_forced_sell=False, _solar_plan=solar_plan,
+            )
     if sell_plan:
         sell_slots = sorted(sell_plan)
         result.sell_slots = sell_slots

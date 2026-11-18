@@ -1134,6 +1134,8 @@ class BatteryOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 CONF_SOC_RECOVERY_BUFFER, DEFAULT_SOC_RECOVERY_BUFFER_PCT
             ),
             fund_grid_exports=c.get(CONF_FUND_GRID_EXPORTS, False),
+            pv_min_forecast_kwh=c.get(CONF_SOLAR_SELL_MIN_FORECAST_KWH, DEFAULT_SOLAR_SELL_MIN_FORECAST_KWH),
+            pv_cut_when_full=c.get(CONF_ENABLE_PV_CUT_WHEN_FULL, DEFAULT_ENABLE_PV_CUT_WHEN_FULL),
             forced_sell_enabled=c.get(
                 CONF_FORCED_SELL_ENABLED, DEFAULT_FORCED_SELL_ENABLED
             ),
