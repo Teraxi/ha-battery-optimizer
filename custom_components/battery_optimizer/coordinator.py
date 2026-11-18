@@ -1155,11 +1155,20 @@ class BatteryOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         belong to yesterday or remain populated after a source goes missing.
         """
         today, _ = self._parse_price_data()
-        if not today:
+        exports, _ = self._parse_export_price_data()
+        if not today and not exports:
             return None, None
-        buy, sell = compute_prices(today, self._build_battery_config())
+        cfg = self._build_battery_config()
+        if self.config.get(CONF_TRANSFER_FEE_SENSOR, "").strip():
+            tariffs, _ = self._parse_transfer_prices()
+            if tariffs is None:
+                today = None
+            else:
+                cfg.transfer_fees = tariffs
         slot = _current_slot_index()
-        return buy[slot], sell[slot]
+        buy = compute_prices(today, cfg)[0][slot] if today else None
+        sell = compute_prices(exports, cfg)[1][slot] if exports else None
+        return buy, sell
 
     @property
     def current_import_price(self) -> float | None:

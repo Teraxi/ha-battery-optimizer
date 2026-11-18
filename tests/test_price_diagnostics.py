@@ -22,6 +22,7 @@ def coordinator(monkeypatch):
                                               const.CONF_SPOT_SENSOR: 'sensor.prices'})
     inst.config_entry = entry
     inst._entry = entry
+    inst._parse_export_price_data = Mock(side_effect=lambda: inst._parse_price_data())
     inst.hass = SimpleNamespace(config=SimpleNamespace(time_zone='Europe/Stockholm'))
     inst._build_battery_config = Mock(return_value=opt.BatteryConfig(
         vat_multiplier=1.255, transfer_fee_buy=0.043, sales_commission=0.003,

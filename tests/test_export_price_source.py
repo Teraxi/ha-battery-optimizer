@@ -361,3 +361,16 @@ def test_fixed_import_market_export_and_variable_tariff_together(instance, monke
     assert sell[96:] == pytest.approx([0.297] * 96)
     assert inst._cost_buy_prices == buy[:96]
     assert inst._cost_sell_prices == sell[:96]
+
+
+def test_combined_diagnostics_use_independent_sources_and_tariff(instance):
+    inst, states = instance
+    inst.config_entry.options[c.CONF_TRANSFER_FEE_SENSOR] = "sensor.tariff"
+    states["sensor.tariff"] = SimpleNamespace(state="0.043", attributes={})
+    assert inst.current_import_price == pytest.approx(0.1434)
+    assert inst.current_export_price == pytest.approx(0.197)
+    states["sensor.tariff"].state = "unavailable"
+    assert inst.current_import_price is None
+    assert inst.current_export_price == pytest.approx(0.197)
+    del states["sensor.export"]
+    assert inst.current_export_price is None
