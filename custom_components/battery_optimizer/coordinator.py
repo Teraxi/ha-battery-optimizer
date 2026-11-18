@@ -30,6 +30,8 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
+from .price_data import parse_sensor_prices
+
 from .const import (
     DOMAIN,
     EMALDO_DOMAIN,
@@ -44,6 +46,7 @@ from .const import (
     CONF_SOLCAST_TODAY,
     CONF_SOLCAST_TOMORROW,
     CONF_VAT_MULTIPLIER,
+    CONF_TRANSFER_FEE_SENSOR,
     CONF_TRANSFER_FEE_BUY,
     CONF_SALES_COMMISSION,
     CONF_BATTERY_CAPACITY_KWH,
@@ -1316,8 +1319,25 @@ class BatteryOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         return result  # type: ignore[return-value]
 
+    def _parse_transfer_prices(self) -> tuple[list[float] | None, list[float] | None]:
+        sensor_id = self.config.get(CONF_TRANSFER_FEE_SENSOR, "").strip()
+        state = self.hass.states.get(sensor_id) if sensor_id else None
+        if state is None:
+            return None, None
+        return parse_sensor_prices(state.state, state.attributes, dt_util.now(), complete=True)
+
+    @property
+    def current_transfer_fee(self) -> float | None:
+        if not self.config.get(CONF_TRANSFER_FEE_SENSOR, "").strip():
+            return self.config.get(CONF_TRANSFER_FEE_BUY, self._locale.transfer_fee_buy)
+        today, _ = self._parse_transfer_prices()
+        return today[_current_slot_index()] if today is not None else None
+
     def _has_tomorrow_prices(self) -> bool:
-        """Check if tomorrow's prices are available."""
+        """Check if tomorrow's energy prices and selected tariff are available."""
+        if self.config.get(CONF_TRANSFER_FEE_SENSOR, "").strip():
+            if self._parse_transfer_prices()[1] is None:
+                return False
         if self.config.get(CONF_PRICE_SOURCE, PRICE_SOURCE_EMALDO) == PRICE_SOURCE_EMALDO:
             _, tomorrow = self._parse_emaldo_price_data()
             return tomorrow is not None
@@ -2960,6 +2980,13 @@ class BatteryOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Gather data
         try:
             prices_today, prices_tomorrow = self._parse_price_data()
+            transfer_today, transfer_tomorrow = None, None
+            if self.config.get(CONF_TRANSFER_FEE_SENSOR, "").strip():
+                transfer_today, transfer_tomorrow = self._parse_transfer_prices()
+                if transfer_today is None:
+                    prices_today = None
+                if transfer_tomorrow is None:
+                    prices_tomorrow = None
         except Exception:
             _LOGGER.exception("Failed to parse price data")
             await self._capture_run_snapshot(
@@ -2997,6 +3024,8 @@ class BatteryOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         solar = self._get_solcast_forecast("today")
         self._auto_base_load_value = await self._fetch_auto_base_load_kw()
         cfg = self._build_battery_config()
+        if transfer_today is not None:
+            cfg.transfer_fees = transfer_today + (transfer_tomorrow or [])
         # Cache today's buy/sell prices for the 15-min cost-capture task.
         # Must run before the force=False skip (below) and the SoC bail:
         # otherwise the cache stays None after a restart and every captured
@@ -3110,7 +3139,7 @@ class BatteryOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         previous_result_tomorrow = self._last_result_tomorrow
         if prices_tomorrow is not None:
             solar_tomorrow = self._get_solcast_forecast("tomorrow")
-            buy_tom, sell_tom = compute_prices(prices_tomorrow, cfg)
+            buy_tom, sell_tom = compute_prices(prices_tomorrow, cfg, start_slot=SLOTS_PER_DAY)
             continuous_result = optimize(
                 buy_prices + buy_tom,
                 sell_prices + sell_tom,
@@ -3278,6 +3307,7 @@ class BatteryOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "emaldo_control_enabled": self._emaldo_control_enabled,
             "config": _config_snapshot(cfg),
             "pv_strategy_enabled": self._pv_strategy_enabled,
+            "transfer_fees": cfg.transfer_fees,
             "prices_today_raw": prices_today,
             "prices_tomorrow_raw": prices_tomorrow or [],
             "buy_prices": buy_prices,
@@ -5485,6 +5515,12 @@ class BatteryOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 price_watcher_label = spot_sensor
             else:
                 price_watcher_label = "(no sensor configured)"
+
+        transfer_sensor = self.config.get(CONF_TRANSFER_FEE_SENSOR, "").strip()
+        if transfer_sensor:
+            self._unsub_listeners.append(async_track_state_change_event(
+                self.hass, [transfer_sensor], self._nordpool_state_change,
+            ))
 
         # 4a) Balancing state watcher — replan when balancing ends
         self._balancing_sensor = self._find_balancing_sensor()

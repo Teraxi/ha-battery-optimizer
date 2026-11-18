@@ -9,6 +9,7 @@ CONF_SOLCAST_TOMORROW = "solcast_tomorrow_sensor"
 
 CONF_VAT_MULTIPLIER = "vat_multiplier"
 CONF_CURRENCY = "currency"
+CONF_TRANSFER_FEE_SENSOR = "transfer_fee_sensor"
 CONF_TRANSFER_FEE_BUY = "transfer_fee_buy"
 CONF_SALES_COMMISSION = "sales_commission"
 

@@ -103,6 +103,15 @@ class BatteryConfig:
     forced_sell_min_profit: float = 0.02  # €/kWh after wear + round-trip
     forced_sell_min_price: float = 0.0    # absolute sell-price floor (€/kWh)
 
+    # Optional per-slot tariffs for the complete optimization horizon.
+    transfer_fees: list[float] = field(default_factory=list)
+
+    def transfer_fee_at(self, slot: int) -> float:
+        """Use the period's tariff or the configured fixed fee."""
+        if 0 <= slot < len(self.transfer_fees):
+            return self.transfer_fees[slot]
+        return self.transfer_fee_buy
+
     @property
     def soc_floor_target_pct(self) -> float:
         """Keep-alive charge target: soc_min plus a small recovery buffer."""
@@ -302,15 +311,15 @@ def baseline_cost_breakdown(result: OptimizationResult) -> dict[str, float]:
     }
 
 
-def _decompose_buy(price: float, cfg: BatteryConfig) -> tuple[float, float, float, float]:
+def _decompose_buy(price: float, cfg: BatteryConfig, slot: int = 0) -> tuple[float, float, float, float]:
     """Decompose buy_price into (energy, transfer, tax, commission) per kWh.
 
     Finnish household pricing: buy = spot × VAT + transfer + commission.
     Import tax (VAT on energy) is zero when the energy price is negative.
     Sum of components == buy_price.
     """
-    spot = (price - cfg.transfer_fee_buy - cfg.sales_commission) / cfg.vat_multiplier
-    transfer = cfg.transfer_fee_buy
+    transfer = cfg.transfer_fee_at(slot)
+    spot = (price - transfer - cfg.sales_commission) / cfg.vat_multiplier
     tax = max(0.0, spot) * (cfg.vat_multiplier - 1.0)
     energy = price - transfer - tax - cfg.sales_commission
     return (energy, transfer, tax, cfg.sales_commission)
@@ -329,6 +338,7 @@ def _decompose_sell(price: float, cfg: BatteryConfig) -> tuple[float, float, flo
 def compute_prices(
     spot_prices: list[float],
     cfg: BatteryConfig,
+    *, start_slot: int = 0,
 ) -> tuple[list[float], list[float]]:
     """Convert spot prices to 96 x 15-min buy/sell prices (€/kWh).
 
@@ -337,6 +347,7 @@ def compute_prices(
             - 96 values (already 15-minute resolution)
             - 24 values (hourly, each expanded to 4 slots)
         cfg: Battery/fee configuration.
+        start_slot: Tariff offset in the full horizon (96 for tomorrow).
 
     Returns:
         (buy_prices, sell_prices) each 96 floats.
@@ -364,6 +375,11 @@ def compute_prices(
     while len(buy) < SLOTS_PER_DAY:
         buy.append(buy[-1] if buy else 0.0)
         sell.append(sell[-1] if sell else 0.0)
+    if cfg.transfer_fees:
+        buy = [
+            price - cfg.transfer_fee_buy + cfg.transfer_fee_at(start_slot + slot)
+            for slot, price in enumerate(buy[:SLOTS_PER_DAY])
+        ]
     return buy[:SLOTS_PER_DAY], sell[:SLOTS_PER_DAY]
 
 
@@ -2099,7 +2115,7 @@ def optimize(
     # Per-slot fee decomposition (F1 breakdown attributes).  Buy prices
     # decompose into (energy, transfer, tax, commission); sell prices into
     # (energy, tax=0, commission).  Precomputed once per run.
-    buy_decomp = [_decompose_buy(p, cfg) for p in buy_prices]
+    buy_decomp = [_decompose_buy(p, cfg, slot) for slot, p in enumerate(buy_prices)]
     sell_decomp = [_decompose_sell(p, cfg) for p in sell_prices]
 
     # Step 2: For each plannable slot, compute the "spread" —

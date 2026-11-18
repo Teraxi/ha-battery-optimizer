@@ -1989,3 +1989,31 @@ Full release history: [CHANGES.md](CHANGES.md).
 - **Issues & feature requests:** [GitHub Issues](https://github.com/wertigpar/ha-battery-optimizer/issues)
 - **Repository:** [github.com/wertigpar/ha-battery-optimizer](https://github.com/wertigpar/ha-battery-optimizer)
 
+
+## External grid transfer tariff
+
+The optional **Grid transfer price sensor** entity overrides the fixed transfer
+fee. Leave it empty to retain the existing fixed tariff. The current tariff is
+also shown by the existing Grid Transfer Fee diagnostic. No seasons, weekdays,
+times, prices, or entity IDs are hardcoded; tariff rules belong to your external
+sensor/automation. This tariff includes taxes and is not multiplied by the
+energy VAT multiplier.
+
+A numeric state without forecast attributes is held constant across the horizon.
+For future tariff changes, supply `data` entries with `start`, `end`, and `price`
+(or timestamped `raw_today`/`raw_tomorrow` entries with `value`). Units may be
+currency/kWh, currency/MWh, or cents/kWh; unitless values mean currency/kWh.
+
+A rolling forecast may start at the current quarter-hour. It must cover every
+remaining quarter today; tomorrow is planned only with a full day of tariff
+and energy prices. Missing current/future periods or an unavailable selected
+sensor prevent a new plan instead of silently using the fixed fee. Missing
+elapsed periods are padded with the current tariff for the fixed-size daily
+arrays: these are estimates, not historical tariff measurements. Use intervals
+aligned to quarter-hours; starts are inclusive, ends exclusive. Timestamps are
+interpreted in HA local time (explicit offsets are converted). The existing
+96-slot local-clock representation, including its DST-day limits, is unchanged.
+
+Tariff updates (including attribute-only changes) trigger replanning. Slot tariffs
+are used in the planning prices, current-day realized-cost cache, and transfer
+cost breakdowns for the continuous two-day horizon.

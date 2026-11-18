@@ -416,7 +416,7 @@ def load_coordinator():
 
     for mod_name in (
         "money", "solar_regime", "runtime_state", "cost_history", "plan_export",
-        "push_state", "emaldo_solar",
+        "push_state", "price_data", "emaldo_solar",
     ):
         if not hasattr(pkg, mod_name):
             _exec(f"{_PKG_NAME}.{mod_name}", _SRC_DIR / f"{mod_name}.py")

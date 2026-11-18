@@ -1097,12 +1097,8 @@ class GridTransferFeeSensor(_BaseOptimizerSensor):
         return f"{self._currency}/kWh"
 
     @property
-    def native_value(self) -> float:
-        return float(
-            self.coordinator.config_entry.options.get(
-                CONF_TRANSFER_FEE_BUY, self.coordinator._locale.transfer_fee_buy
-            )
-        )
+    def native_value(self) -> float | None:
+        return self.coordinator.current_transfer_fee
 
 
 class FeedInSalesCommissionSensor(_BaseOptimizerSensor):

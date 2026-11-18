@@ -40,6 +40,7 @@ from .const import (
     CONF_SOLCAST_TOMORROW,
     CONF_VAT_MULTIPLIER,
     CONF_CURRENCY,
+    CONF_TRANSFER_FEE_SENSOR,
     CONF_TRANSFER_FEE_BUY,
     CONF_SALES_COMMISSION,
     CONF_BATTERY_CAPACITY_KWH,
@@ -277,6 +278,15 @@ class _OptionalNumberSelector(NumberSelector):
         return super().__call__(data)
 
 
+def _transfer_price_errors(hass: HomeAssistant, values: dict[str, Any]) -> dict[str, str]:
+    """An empty entity keeps the fixed fee; a configured entity must exist."""
+    sensor = str(values.get(CONF_TRANSFER_FEE_SENSOR) or "").strip()
+    values[CONF_TRANSFER_FEE_SENSOR] = sensor
+    if sensor and not hass.states.get(sensor):
+        return {CONF_TRANSFER_FEE_SENSOR: "sensor_not_found"}
+    return {}
+
+
 def _build_schema(
     defaults: dict[str, Any] | None = None,
     emaldo_options: dict[str, str] | None = None,
@@ -381,6 +391,9 @@ def _build_schema(
                 CONF_TRANSFER_FEE_BUY,
                 default=d.get(CONF_TRANSFER_FEE_BUY, loc.transfer_fee_buy),
             ): vol.Coerce(float),
+            vol.Optional(
+                CONF_TRANSFER_FEE_SENSOR, default=d.get(CONF_TRANSFER_FEE_SENSOR, ""),
+            ): str,
             vol.Required(
                 CONF_SALES_COMMISSION,
                 default=d.get(CONF_SALES_COMMISSION, loc.sales_commission),
@@ -973,6 +986,7 @@ class BatteryOptimizerConfigFlow(ConfigFlow, domain=DOMAIN):
                 if not sensor_id or not self.hass.states.get(sensor_id):
                     errors["base"] = "sensor_not_found"
 
+            errors.update(_transfer_price_errors(self.hass, user_input))
             currency_error = _currency_error(user_input)
             if currency_error:
                 errors[CONF_CURRENCY] = currency_error
@@ -1024,6 +1038,7 @@ class BatteryOptimizerOptionsFlow(OptionsFlowWithConfigEntry):
             sensor_id = user_input.get(CONF_SOLAR_ACTUAL_SENSOR, "")
             if sensor_id and not self.hass.states.get(sensor_id):
                 errors["base"] = "sensor_not_found"
+            errors.update(_transfer_price_errors(self.hass, user_input))
             currency_error = _currency_error(user_input)
             if currency_error:
                 errors[CONF_CURRENCY] = currency_error
