@@ -4,6 +4,8 @@ DOMAIN = "battery_optimizer"
 
 # ── Config entry keys ────────────────────────────────────────────────
 CONF_SPOT_SENSOR = "spot_price_sensor"
+CONF_SELL_PRICE_SOURCE = "sell_price_source"
+CONF_SELL_PRICE_SENSOR = "sell_price_sensor"
 CONF_SOLCAST_TODAY = "solcast_today_sensor"
 CONF_SOLCAST_TOMORROW = "solcast_tomorrow_sensor"
 

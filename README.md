@@ -2017,3 +2017,38 @@ interpreted in HA local time (explicit offsets are converted). The existing
 Tariff updates (including attribute-only changes) trigger replanning. Slot tariffs
 are used in the planning prices, current-day realized-cost cache, and transfer
 cost breakdowns for the continuous two-day horizon.
+
+## Independent import and export energy prices
+
+Import price source remains **emaldo** or **sensor**. The new **Export price
+source** independently offers **emaldo** (default) or **sensor**, with its own
+export entity field. Emaldo reuses the linked battery's price reader. A missing
+Emaldo export curve never silently falls back to the import contract price.
+Existing installations with external import prices should explicitly select
+an export source after upgrading: exports now default to Emaldo, not to the
+external import entity.
+
+For a fixed contract, select sensor for import and an external `input_number`
+or numeric sensor entity. Enter the contract price in that entity; there is no
+static-price field in this integration. A scalar without forecast attributes
+is held constant across the planning horizon until it changes. Invalid,
+unavailable, and non-finite numbers are not treated as zero. Timestamped `data`
+and Nord Pool-style `raw_today`/`raw_tomorrow` forecasts are also supported.
+
+A sensor belonging to Home Assistant's core Nord Pool integration (including
+its current-price sensor) is resolved through the entity registry and its
+configured market area. The optimizer obtains the full curve via HA's
+`nordpool.get_prices_for_date` service, which reuses the Nord Pool integration's
+cached data when the date, area, and currency match. Service responses are
+currency/MWh and converted to currency/kWh before subtracting the commission.
+The scalar current-price state is never substituted for a missing market curve.
+No entity IDs or market areas are hardcoded. Other scalar sensors are assumed
+to represent fixed contracts; expose future prices as forecast attributes if
+that assumption is inappropriate.
+
+The planner, its realized-cost cache, and analysis snapshots use the independent
+curves. Import VAT and transfer fees apply only to purchases; sales commission
+is deducted from exports. If an import helper already includes VAT, set the
+VAT multiplier to 1. Use the same currency for all sources. Tomorrow is included
+only when import, export, and any selected transfer forecast are available.
+Changes to either energy source or the transfer tariff trigger replanning.

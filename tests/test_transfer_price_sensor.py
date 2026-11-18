@@ -50,6 +50,7 @@ def instance(monkeypatch):
         )
     )
     inst._parse_price_data = Mock(return_value=([0.08] * 96, [0.08] * 96))
+    inst._parse_export_price_data = Mock(return_value=([0.08] * 96, [0.08] * 96))
     return inst, states
 
 

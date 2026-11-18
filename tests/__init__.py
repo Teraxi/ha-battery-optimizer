@@ -317,6 +317,7 @@ def _install_fake_homeassistant():
     ):
         setattr(event, name, lambda *a, **k: None)
     er_mod = types.ModuleType("homeassistant.helpers.entity_registry")
+    er_mod.async_get = lambda hass: None
     uc = types.ModuleType("homeassistant.helpers.update_coordinator")
 
     class DataUpdateCoordinator:
