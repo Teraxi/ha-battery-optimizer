@@ -2053,6 +2053,8 @@ def optimize(
     enable_forced_sell: bool = True,
     _export_cycle: ExportCycle | None = None,
     _solar_plan: SolarPlan | None = None,
+    active_sale_seconds: float | None = None,
+    _emaldo_first_hours: float = SLOT_DURATION_HOURS,
 ) -> OptimizationResult:
     """Run greedy optimization over a requested slot horizon.
 
@@ -2092,6 +2094,19 @@ def optimize(
             SLOTS_PER_DAY,
         )
         total_slots = SLOTS_PER_DAY
+    if (active_sale_seconds is not None and 0 < active_sale_seconds <= 900
+            and initial_soc_pct is not None and cfg.forced_sell_enabled and enable_forced_sell):
+        from .active_sale import plan_active_sale
+
+        return plan_active_sale(
+            buy_prices, sell_prices, solar_15min, cfg,
+            seconds_left=active_sale_seconds, start_slot=start_slot, initial_soc_pct=initial_soc_pct,
+            total_slots=total_slots, enable_pv_strategy=enable_pv_strategy, emaldo_modes=emaldo_modes,
+            enable_night_drain=enable_night_drain, solar_regime_engaged=solar_regime_engaged,
+            future_min_buy=future_min_buy, future_grid_charge_needed=future_grid_charge_needed,
+            solar_confidence_ratio=solar_confidence_ratio, case_a_floor=case_a_floor,
+        )
+
     n = total_slots
     soc_min_kwh = cfg.capacity_kwh * cfg.soc_min / 100.0
     soc_max_kwh = cfg.capacity_kwh * cfg.soc_max / 100.0
@@ -3262,7 +3277,6 @@ def optimize(
     e_export_energy = e_export_commission = 0.0
     if emaldo_modes is not None:
         e_soc = current_soc_kwh
-        rate_ac = cfg.max_charge_per_slot_kwh
         for s in range(n):
             if s < start_slot:
                 continue
@@ -3289,9 +3303,11 @@ def optimize(
             e_sp = sell_prices[s] if s < len(sell_prices) else 0.0
             mode = emaldo_modes[s]
 
+            hours = _emaldo_first_hours if s == start_slot else SLOT_DURATION_HOURS
+            rate_ac = cfg.max_charge_kw * hours
             net = net_loads[s]  # kW; negative = solar surplus
-            surplus_ac = max(0.0, -net) * SLOT_DURATION_HOURS
-            deficit_ac = max(0.0, net) * SLOT_DURATION_HOURS
+            surplus_ac = max(0.0, -net) * hours
+            deficit_ac = max(0.0, net) * hours
             pv_on = pv_flags[s] if pv_flags else True
 
             # PV handling: universal surplus charging when third-party PV on
@@ -3305,8 +3321,8 @@ def optimize(
                 load_def = deficit_ac
             else:
                 solar_charge_ac = 0.0
-                e_export_kwh = solar_15min[s] * SLOT_DURATION_HOURS
-                load_def = cfg.base_load_kw * SLOT_DURATION_HOURS
+                e_export_kwh = solar_15min[s] * hours
+                load_def = cfg.base_load_kw * hours
 
             # Mode semantics (grid/discharge policy):
             #   charge  (1) — grid charging allowed: top the battery up to the
@@ -3326,7 +3342,7 @@ def optimize(
                 draw_ac = min(
                     load_def,
                     max(0.0, (e_soc - soc_min_kwh) / cfg.discharge_efficiency),
-                    cfg.max_discharge_kw * SLOT_DURATION_HOURS,
+                    cfg.max_discharge_kw * hours,
                 )
                 e_soc -= draw_ac * cfg.discharge_efficiency
                 e_cycled += draw_ac
@@ -3334,7 +3350,7 @@ def optimize(
             else:
                 e_grid_kwh = load_def
 
-            e_soc = max(e_soc - cfg.idle_power_kw * SLOT_DURATION_HOURS, 0.0)
+            e_soc = max(e_soc - cfg.idle_power_kw * hours, 0.0)
             emaldo_cost += e_bp * e_grid_kwh - e_sp * e_export_kwh
             # Decomposed emaldo subcosts.
             e_ie, e_it, e_itx, e_ic = buy_decomp[s]

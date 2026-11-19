@@ -489,6 +489,9 @@ class BatteryOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     # land on a DIFFERENT switch and report a state the sale does not have.
     _manual_selling_switch_id_cached: str | None = None
 
+    _sale_no_restart_before = 0.0
+    _unsub_sale_deadline: CALLBACK_TYPE | None = None
+
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         super().__init__(
             hass,
@@ -1010,6 +1013,9 @@ class BatteryOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return
 
         cfg = self._build_battery_config()
+
+        if soc <= cfg.soc_min and self._manual_selling_active:
+            self.hass.async_create_task(self._stop_manual_selling())
 
         # L3 — divergence check (independent of the SoC safeguard): actual SoC
         # has drifted more than the threshold from what the current plan
@@ -3223,6 +3229,20 @@ class BatteryOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             cfg.fund_grid_exports = False
         solar_tomorrow: list[float] | None = None
         previous_result_tomorrow = self._last_result_tomorrow
+        active_sale_seconds = None
+        decision_time = dt_util.now()
+        elapsed = (decision_time.minute % 15) * 60 + decision_time.second + decision_time.microsecond / 1e6
+        winner = expand_day(user_rules, today_date)[now_slot] if has_user_rules else None
+        if (cfg.forced_sell_enabled and self._manual_selling_active and self._manual_selling_ours
+                and self._emaldo_control_enabled
+                and soc_input_flag == "read" and self._manual_selling_is_on()
+                and elapsed > 0 and now_slot == decision_time.hour * 4 + decision_time.minute // 15
+                and self._last_result and now_slot in self._last_result.sell_slots
+                and (winner is None or (winner.action == "optimizer" and winner.pv_sell == "inherit"))):
+            measured_soc = self._get_battery_soc()
+            if measured_soc is not None:
+                soc = measured_soc
+                active_sale_seconds = 900 - elapsed
         if prices_tomorrow is not None:
             solar_tomorrow = self._get_solcast_forecast("tomorrow")
             buy_tom, _ = compute_prices(prices_tomorrow, cfg, start_slot=SLOTS_PER_DAY)
@@ -3234,6 +3254,7 @@ class BatteryOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 cfg,
                 start_slot=now_slot,
                 initial_soc_pct=soc,
+                active_sale_seconds=active_sale_seconds,
                 enable_pv_strategy=self._pv_strategy_enabled,
                 emaldo_modes=emaldo_modes,
                 solar_regime_engaged=bool(
@@ -3253,6 +3274,7 @@ class BatteryOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 cfg,
                 start_slot=now_slot,
                 initial_soc_pct=soc,
+                active_sale_seconds=active_sale_seconds,
                 enable_pv_strategy=self._pv_strategy_enabled,
                 emaldo_modes=emaldo_modes,
                 solar_regime_engaged=bool(
@@ -3270,11 +3292,21 @@ class BatteryOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._last_result_tomorrow = None
 
         if has_user_rules:
+            decision = (result.trace or {}).get("active_sale", {})
+            partial = decision.get("decision") in ("continue", "stop")
+            slot_soc = result.slots[now_slot].soc_after
             self._apply_user_mask(
-                result, user_rules, solar, cfg, start_slot=now_slot,
-                initial_soc_kwh=cfg.capacity_kwh * soc / 100.0,
+                result, user_rules, solar, cfg, start_slot=now_slot + int(partial),
+                initial_soc_kwh=cfg.capacity_kwh * (slot_soc if partial else soc) / 100.0,
                 day=today_date,
             )
+            if partial:
+                # Only the future full slots are re-simulated by the rule mask.
+                slot = result.slots[now_slot]
+                slot.soc_after = slot_soc
+                result.charge_slots += slot.action in ("charge", "charge_floor")
+                result.discharge_slots += slot.action == "discharge"
+                result.idle_slots += slot.action == "idle"
         else:
             self._last_sources = None
             self._last_user_winners = None
@@ -3340,6 +3372,7 @@ class BatteryOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 result_tomorrow.discharge_slots,
                 result_tomorrow.idle_slots,
             )
+        self._set_sale_deadline(result, decision_time)
         # Retain the scale THIS plan ran under — the next run's accuracy
         # comparison attributes the solar error to it (raw-basis recovery).
         self._last_result_solar_scale = self._solar_scale
@@ -4185,6 +4218,36 @@ class BatteryOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
         _LOGGER.info("Restored %s to off after the window", sell_back_id)
 
+    def _set_sale_deadline(self, result, decision_time: datetime) -> None:
+        """Stop a retained sale at its energy limit or quarter-hour boundary."""
+        if self._unsub_sale_deadline is not None:
+            self._unsub_sale_deadline()
+            self._unsub_sale_deadline = None
+        decision = (result.trace or {}).get("active_sale", {})
+        if decision.get("decision") != "continue":
+            return
+        slot = result.slots[decision["slot"]]
+        if slot.action != "force_sell":
+            decision["decision"] = "overridden"
+            result.sell_slots.remove(slot.index)
+            result.sell_target_kwh = sum(result.slots[i].sell_kwh for i in result.sell_slots)
+            return
+        self._sale_no_restart_before = decision_time.timestamp() + decision["remaining_seconds"]
+        deadline = decision_time.timestamp() + decision["continue_seconds"]
+        decision["deadline"] = deadline
+
+        async def finish(_now):
+            async with self._forced_sell_lock:
+                if self._last_result is not result:
+                    return
+                self._unsub_sale_deadline = None
+                await self._stop_manual_selling_locked()
+            await self.run_optimizer(reason="active_sale_ended", force=True)
+
+        self._unsub_sale_deadline = async_call_later(
+            self.hass, max(0.0, deadline - dt_util.now().timestamp()), finish
+        )
+
     async def _manage_manual_selling(
         self,
         result: OptimizationResult,
@@ -4391,7 +4454,25 @@ class BatteryOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if not self._emaldo_control_enabled:
             await self._stop_manual_selling_locked()
             return
+        winners = getattr(self, "_last_user_winners", None)
+        if winners:
+            winner = winners[now.hour * 4 + now.minute // 15]
+            if winner.action != "optimizer" or winner.pv_sell != "inherit":
+                await self._stop_manual_selling_locked()
+                return
         window = result.sell_slots or []
+        decision = (result.trace or {}).get("active_sale", {})
+        if decision.get("decision") == "continue":
+            # This partial amount belongs exclusively to the existing device
+            # target. A user stop or device self-completion must not reopen it.
+            if now.timestamp() < decision["deadline"]:
+                return
+            if self._manual_selling_active and (
+                self._manual_selling_started_at is None
+                or self._manual_selling_started_at.timestamp() <= decision["deadline"]
+            ):
+                await self._stop_manual_selling_locked()
+            window = [s for s in window if s != decision["slot"]]
         if result.sell_target_kwh <= 0:
             # PV-only window: the inverter exports on its own.  Stop rather
             # than return — a plan that turns PV-only while a sell window is
@@ -4425,6 +4506,8 @@ class BatteryOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return
         if self._manual_selling_active:
             return  # already running; re-check handled by plan re-run
+        if now.timestamp() < self._sale_no_restart_before:
+            return
         # Issue #23: Emaldo ends a manual sale by itself once the staged target
         # has been exported, so _manual_selling_active goes False on its own
         # with the window still open.  Without this key the next tick would see
@@ -4508,7 +4591,10 @@ class BatteryOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         number_id = self._resolve_emaldo_entity(
             "manual_selling_target", domain="number"
         ) or "number.power_store_manual_selling_target"
-        staged_kwh = _stage_sell_target_kwh(result.sell_target_kwh)
+        target = result.sell_target_kwh
+        if decision.get("decision") == "continue":
+            target = sum(result.slots[s].sell_kwh for s in window)
+        staged_kwh = _stage_sell_target_kwh(target)
         if staged_kwh <= 0.0:
             # D2: the remaining plan cannot be honoured in whole kWh without
             # exporting more than is left (see the helper). Emaldo rounds
@@ -6282,6 +6368,9 @@ class BatteryOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     @callback
     def async_shutdown(self) -> None:
         """Clean up listeners."""
+        if self._unsub_sale_deadline is not None:
+            self._unsub_sale_deadline()
+            self._unsub_sale_deadline = None
         for unsub in self._unsub_pv_transitions:
             unsub()
         self._unsub_pv_transitions.clear()

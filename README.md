@@ -2098,3 +2098,9 @@ incremental benefit. Solar export does not stage a manual battery sale.
 Custom schedule rules and either separate speculative/cheap charging mode
 take precedence. The cut-PV-when-full option also takes precedence over this
 solar alternative, since it can override the simulated PV routing.
+
+### Replanning an active battery sale
+
+During an optimizer-owned sale, a mid-quarter price update compares stopping now with selling through the remaining minutes. The comparison uses measured state of charge, forecast net household demand, usable battery energy, wear, and the cost of the subsequent plan. The device keeps its existing sale target. A timer ends the continuation at the quarter boundary or earlier at the projected reserve and requests a fresh plan.
+
+The **Manual Sell Schedule** sensor exposes the comparison in its `active_sale` attribute. `advantage` is the estimated benefit of continuing in the configured currency, and `export_kwh` is the remaining battery energy available for grid export after household demand.

@@ -224,6 +224,29 @@ class ForcedSellTickTests(unittest.TestCase):
         c.hass.services.async_call = AsyncMock()
         return c
 
+    def test_partial_sale_keeps_running_until_deadline_without_restaging(self):
+        c = self._coord(active=True)
+        result = c._last_result
+        decision = {"slot": 31, "decision": "continue", "remaining_seconds": 365,
+                    "continue_seconds": 180}
+        result.trace = {"active_sale": decision}
+        result.slots[31].action = "force_sell"
+        c._check_manual_selling_self_completion_locked = AsyncMock()
+        c.run_optimizer = AsyncMock()
+        with _clock(INSIDE), patch.object(self.coord_mod, "async_call_later") as later:
+            c._set_sale_deadline(result, INSIDE)
+            _, delay, finish = later.call_args.args
+            self.assertEqual(delay, 180)
+            asyncio.run(c._manage_manual_selling_locked(result, INSIDE, True))
+            c._stop_manual_selling_locked.assert_not_awaited()
+            # A device or user stop is final during this remainder.
+            c._manual_selling_active = False
+            asyncio.run(c._manage_manual_selling_locked(result, INSIDE, True))
+            c.hass.services.async_call.assert_not_awaited()
+            asyncio.run(finish(INSIDE + timedelta(seconds=180)))
+            c._stop_manual_selling_locked.assert_awaited_once()
+            c.run_optimizer.assert_awaited_once_with(reason="active_sale_ended", force=True)
+
     def test_tick_evaluates_while_window_is_open(self):
         """The whole point: a tick inside the window must act, with no
         preceding optimizer run."""

@@ -912,6 +912,9 @@ class ManualSellChartSensor(_BaseOptimizerSensor):
             "sell_profit": round(self._result.sell_profit, 4),
             "sources": {"battery": bat_n, "pv": pv_n},
         }
+        decision = (self._result.trace or {}).get("active_sale")
+        if decision:
+            attrs["active_sale"] = decision
         return attrs
 
 
