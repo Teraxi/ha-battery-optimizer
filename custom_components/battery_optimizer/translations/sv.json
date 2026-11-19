@@ -282,6 +282,12 @@
       "realized_cost_history": {
         "name": "Realiserad kostnadshistorik"
       },
+      "export_profit_forecast_today": {
+        "name": "Beräknad nettovinst på elförsäljning idag"
+      },
+      "export_profit_yesterday": {
+        "name": "Realiserad nettovinst på elförsäljning igår"
+      },
       "realized_cost_today": {
         "name": "Realiserad kostnad idag"
       },

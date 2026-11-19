@@ -268,6 +268,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # publish real values right after setup (not 0.0 until the first
     # 15-minute capture tick reloads the sidecar).
     await coordinator.async_restore_cost_history()
+    await coordinator.restore_export_book()
 
     # Set up checkpoint & Nordpool listeners
     coordinator.async_setup_listeners()

@@ -282,6 +282,12 @@
       "realized_cost_history": {
         "name": "Toteutunut kustannushistoria"
       },
+      "export_profit_forecast_today": {
+        "name": "Sähkönmyynnin arvioitu nettovoitto tänään"
+      },
+      "export_profit_yesterday": {
+        "name": "Sähkönmyynnin toteutunut nettovoitto eilen"
+      },
       "realized_cost_today": {
         "name": "Toteutunut kustannus tänään"
       },

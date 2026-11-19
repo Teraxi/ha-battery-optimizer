@@ -290,6 +290,12 @@
       "realized_cost_history": {
         "name": "Realized Cost History"
       },
+      "export_profit_forecast_today": {
+        "name": "Estimated export net profit today"
+      },
+      "export_profit_yesterday": {
+        "name": "Realized export net profit yesterday"
+      },
       "realized_cost_today": {
         "name": "Realized Cost Today"
       }

@@ -282,6 +282,12 @@
       "realized_cost_history": {
         "name": "Reell kostnadshistorikk"
       },
+      "export_profit_forecast_today": {
+        "name": "Forventet nettofortjeneste ved strømsalg i dag"
+      },
+      "export_profit_yesterday": {
+        "name": "Realisert nettofortjeneste ved strømsalg i går"
+      },
       "realized_cost_today": {
         "name": "Reell kostnad i dag"
       },

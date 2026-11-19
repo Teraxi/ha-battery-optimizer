@@ -419,7 +419,7 @@ def load_coordinator():
         return mod
 
     for mod_name in (
-        "money", "solar_regime", "runtime_state", "cost_history", "plan_export",
+        "money", "solar_regime", "runtime_state", "export_profit", "cost_history", "plan_export",
         "push_state", "price_data", "emaldo_solar",
     ):
         if not hasattr(pkg, mod_name):

@@ -282,6 +282,12 @@
       "realized_cost_history": {
         "name": "Realiseret omkostningshistorik"
       },
+      "export_profit_forecast_today": {
+        "name": "Forventet nettofortjeneste ved elsalg i dag"
+      },
+      "export_profit_yesterday": {
+        "name": "Realiseret nettofortjeneste ved elsalg i går"
+      },
       "realized_cost_today": {
         "name": "Realiseret omkostning i dag"
       },

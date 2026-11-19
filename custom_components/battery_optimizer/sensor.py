@@ -88,6 +88,8 @@ async def async_setup_entry(
         SolarBalanceSensor(coordinator, entry),
         RealizedCostHistorySensor(coordinator, entry),
         RealizedCostTodaySensor(coordinator, entry),
+        ExportProfitSensor(coordinator, entry, yesterday=False),
+        ExportProfitSensor(coordinator, entry, yesterday=True),
         VatMultiplierSensor(coordinator, entry),
         GridTransferFeeSensor(coordinator, entry),
         ImportPriceSensor(coordinator, entry),
@@ -257,6 +259,25 @@ class _RealizedCostBaseSensor(_BaseOptimizerSensor):
         super().__init__(coordinator, entry, key)
         self._attr_native_unit_of_measurement = self._currency
         self._attr_icon = "mdi:currency-eur"
+
+
+class ExportProfitSensor(_RealizedCostBaseSensor):
+    """Net export income attributable to the local calendar day."""
+
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coordinator, entry, *, yesterday: bool):
+        key = "export_profit_yesterday" if yesterday else "export_profit_forecast_today"
+        super().__init__(coordinator, entry, key)
+        self._yesterday = yesterday
+
+    @property
+    def native_value(self):
+        return self.coordinator.export_profit_report(self._yesterday)[0]
+
+    @property
+    def extra_state_attributes(self):
+        return self.coordinator.export_profit_report(self._yesterday)[1]
 
 
 class RealizedCostHistorySensor(_RealizedCostBaseSensor):

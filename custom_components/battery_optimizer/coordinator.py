@@ -209,6 +209,7 @@ from .solar_regime import default_state as solar_regime_default_state
 from .solar_regime import deserialize as solar_regime_deserialize
 from .solar_regime import update_regime
 from .solar_actual import counter_delta_kwh, normalize_to_kwh, resolve_solar_source
+from . import export_profit
 from .cost_history import (
     local_slot_index,
     slot_cost,
@@ -723,6 +724,10 @@ class BatteryOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._cost_history_path = self.hass.config.path(
             "battery_optimizer_cost_history.json"
         )
+        self._export_book = {}
+        self._export_book_path = hass.config.path(f"battery_optimizer_export_profit_{entry.entry_id}.json")
+        self._export_lock = asyncio.Lock()
+        self._cost_price_date = None
         self._cost_history: list[dict] | None = None
         self._snapshot_path = self.hass.config.path(
             "battery_optimizer_run_snapshot.json"
@@ -2711,6 +2716,121 @@ class BatteryOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return None
         return normalize_to_kwh(value, state.attributes.get("unit_of_measurement"))
 
+    async def restore_export_book(self):
+        stored = await self.hass.async_add_executor_job(
+            marker_io.read_json_marker, self._export_book_path
+        )
+        if isinstance(stored, dict) and stored.get("currency") == self.currency:
+            self._export_book = stored
+
+    def _sample_export_profit(self, book, now, cfg):
+        """Update a ledger or a transient forecast copy from the same meter readings."""
+        import_id = self._effective_grid_import_sensor()
+        export_id = self._effective_grid_export_sensor()
+        imported = self._read_counter_kwh(import_id) if import_id else None
+        exported = self._read_counter_kwh(export_id) if export_id else None
+        soc = self._get_battery_soc()
+        sample = None
+        if all(
+            v is not None and math.isfinite(v) and v >= 0
+            for v in (soc, imported, exported)
+        ):
+            slot = local_slot_index(now)
+            buy = sell = None
+            prices = None
+            if (
+                self._cost_price_date == now.date()
+                and self._cost_sell_prices
+                and self._cost_buy_prices
+            ):
+                prices = (self._cost_buy_prices, self._cost_sell_prices)
+            elif (
+                self._last_run
+                and self._last_result_tomorrow
+                and dt_util.as_local(self._last_run).date() + timedelta(days=1)
+                == now.date()
+            ):
+                rows = self._last_result_tomorrow.slots
+                prices = (
+                    [row.buy_price for row in rows],
+                    [row.sell_price for row in rows],
+                )
+            if prices and slot < min(map(len, prices)):
+                buys, sells = prices
+                buy, sell = buys[slot], sells[slot]
+                # Midnight may have seeded counters before today's first plan.
+                prev = book.get("sample")
+                if (
+                    prev
+                    and book.get("date") == now.date().isoformat()
+                    and prev["buy"] is None
+                ):
+                    prior = datetime.fromtimestamp(prev["timestamp"], now.tzinfo)
+                    idx = local_slot_index(prior)
+                    book["sample"] = dict(prev, buy=buys[idx], sell=sells[idx])
+                    book.setdefault("basis", buys[idx] / cfg.charge_efficiency)
+            sample = {
+                "stock": soc * cfg.capacity_kwh / 100,
+                "import": imported,
+                "export": exported,
+                "buy": buy,
+                "sell": sell,
+            }
+            for key in ("charged", "discharged"):
+                entity = self._resolve_emaldo_entity(f"battery_{key}_today")
+                value = self._read_counter_kwh(entity) if entity else None
+                if value is not None and math.isfinite(value) and value >= 0:
+                    sample[key] = value
+        export_profit.capture(book, now, sample, cfg)
+
+    async def _capture_export_profit(self, now: datetime) -> None:
+        now = dt_util.as_local(now)
+        async with self._export_lock:
+            if self._export_book.get("currency") != self.currency:
+                self._export_book = {"currency": self.currency}
+            book = self._export_book
+            self._sample_export_profit(book, now, self._build_battery_config())
+            await self.hass.async_add_executor_job(
+                marker_io.atomic_write_json, self._export_book_path, book
+            )
+            self.async_update_listeners()
+
+    def export_profit_report(self, yesterday: bool):
+        now = dt_util.now()
+        book = self._export_book
+        if yesterday:
+            date = (now.date() - timedelta(days=1)).isoformat()
+            record = book.get("yesterday", {})
+            valid = record.get("date") == date and record.get("complete", False)
+            return (record.get("profit") if valid else None), {
+                "date": date,
+                "complete": valid,
+            }
+        date = now.date().isoformat()
+        result = self._last_result
+        if self._last_run is None or not self._ran_this_session:
+            return None, {"date": date}
+        plan_date = dt_util.as_local(self._last_run).date()
+        if plan_date == now.date() - timedelta(days=1):
+            result = self._last_result_tomorrow
+        elif plan_date != now.date():
+            result = None
+        if result is None:
+            return None, {"date": date}
+        cfg = self._build_battery_config()
+        # Include the metered part of an in-flight sale without committing
+        # extra snapshots or counting that energy again in the plan.
+        projection = dict(book) if book.get("currency") == self.currency else {}
+        self._sample_export_profit(projection, now, cfg)
+        value = export_profit.forecast(projection, result, now, cfg)
+        realized = round(projection["revenue"] - projection["cost"], 4)
+        return value, {
+            "date": date,
+            "coverage_from_midnight": projection["complete"],
+            "realized_net": realized,
+            "remaining_net": round(value - realized, 4) if value is not None else None,
+        }
+
     async def _capture_cost_slot(self, now: datetime) -> None:
         """Record the realized cost of the 15-min slot that just elapsed.
 
@@ -3118,6 +3238,7 @@ class BatteryOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # realized-cost sensors never receive a state write.
         buy_prices, _ = compute_prices(prices_today, cfg)
         _, sell_prices = compute_prices(sell_today, cfg)
+        self._cost_price_date = dt_util.now().date()
         self._cost_buy_prices = buy_prices
         self._cost_sell_prices = sell_prices
         now_slot = _current_slot_index()
@@ -5774,6 +5895,11 @@ class BatteryOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         #     restart is stopped at once (issue #30).  Safe before Emaldo is
         #     up: an unreadable switch answers "unknown" and the tick retries.
         self.hass.async_create_task(self._restore_manual_selling_after_restart())
+
+        for timing in ({"minute": "/15", "second": 0}, {"hour": 23, "minute": 59, "second": 59}):
+            self._unsub_listeners.append(async_track_time_change(
+                self.hass, self._capture_export_profit, **timing
+            ))
 
         # 7) Realized cost capture — every 15 min aligned to :00/:15/:30/:45.
         # Registered unconditionally; _capture_cost_slot skips until a grid
