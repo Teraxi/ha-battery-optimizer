@@ -95,6 +95,15 @@ async def async_setup_entry(
         ActiveCurrencySensor(coordinator, entry),
     ], config_subentry_id=coordinator._device_subentry_id())
 
+    # The extended optimizer engine contributes its own entities; the
+    # standard coordinator has no such hook.
+    extra_sensors = getattr(coordinator, "extra_sensors", None)
+    if extra_sensors is not None:
+        async_add_entities(
+            extra_sensors(entry),
+            config_subentry_id=coordinator._device_subentry_id(),
+        )
+
 
 class _BaseOptimizerSensor(CoordinatorEntity[BatteryOptimizerCoordinator], SensorEntity):
     """Base class for battery optimizer sensors."""

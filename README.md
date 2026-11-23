@@ -108,6 +108,14 @@ A push that fails on every attempt is logged as a failure, not as success, and i
 
 All parameters are set through the UI config flow. No YAML configuration needed.
 
+### Optimizer engine
+
+The **Optimizer engine** field selects between the upstream optimizer
+(`standard`, the default) and an independently maintained `extended` engine with
+additional price-source and export features. See
+[EXTENDED_OPTIMIZER.md](EXTENDED_OPTIMIZER.md). The rest of this document
+describes the standard engine.
+
 ### Config Flow Fields
 
 | Field | Description | Default |

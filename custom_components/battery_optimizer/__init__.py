@@ -7,6 +7,7 @@ charge/discharge schedule to maximize savings.
 
 from __future__ import annotations
 
+import importlib
 import logging
 from typing import Callable
 
@@ -22,6 +23,10 @@ from .const import (
     SUBENTRY_TYPE_DEVICE,
     DEVICE_SUBENTRY_LABEL,
     DEVICE_SUBENTRY_UNIQUE_ID,
+    CONF_OPTIMIZER_ENGINE,
+    DEFAULT_OPTIMIZER_ENGINE,
+    ENGINE_EXTENDED,
+    ENGINE_STANDARD,
 )
 from .coordinator import BatteryOptimizerCoordinator
 from .rules import (
@@ -35,6 +40,29 @@ from .services import async_register_services, async_unregister_services
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS = [Platform.BUTTON, Platform.SENSOR, Platform.SWITCH]
+
+
+def _selected_engine(entry: ConfigEntry) -> str:
+    """Return the optimizer engine chosen for this entry (standard by default)."""
+    return {**entry.data, **entry.options}.get(
+        CONF_OPTIMIZER_ENGINE, DEFAULT_OPTIMIZER_ENGINE
+    )
+
+
+async def _async_create_coordinator(
+    hass: HomeAssistant, entry: ConfigEntry
+) -> BatteryOptimizerCoordinator:
+    """Create the coordinator for the selected optimizer engine.
+
+    The extended engine lives in its own package and is imported only when
+    selected, so the default (standard) path never loads it.
+    """
+    if _selected_engine(entry) == ENGINE_EXTENDED:
+        module = await hass.async_add_executor_job(
+            importlib.import_module, f"{__package__}.extended.coordinator"
+        )
+        return module.ExtendedBatteryOptimizerCoordinator(hass, entry)
+    return BatteryOptimizerCoordinator(hass, entry)
 
 
 async def _ensure_default_rule(hass: HomeAssistant, entry: ConfigEntry) -> None:
@@ -258,7 +286,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # stray is gone this loop finds nothing.
     _cleanup_orphaned_devices(hass, entry)
 
-    coordinator = BatteryOptimizerCoordinator(hass, entry)
+    coordinator = await _async_create_coordinator(hass, entry)
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
 
@@ -367,6 +395,11 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def _async_options_updated(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Handle options/subentry update — refresh listeners and re-run optimizer."""
     coordinator: BatteryOptimizerCoordinator = hass.data[DOMAIN][entry.entry_id]
+    if getattr(coordinator, "engine", ENGINE_STANDARD) != _selected_engine(entry):
+        # The optimizer engine decides the coordinator class, so a change of
+        # engine takes effect through a clean reload of the entry.
+        await hass.config_entries.async_reload(entry.entry_id)
+        return
     coordinator.async_setup_listeners()
     _LOGGER.info("Battery Optimizer options updated, listeners refreshed")
     if coordinator._ha_started:

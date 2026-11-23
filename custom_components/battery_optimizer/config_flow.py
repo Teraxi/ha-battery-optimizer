@@ -35,6 +35,10 @@ from homeassistant.helpers.selector import (
 from .const import (
     DOMAIN,
     SUBENTRY_TYPE_RULE,
+    CONF_OPTIMIZER_ENGINE,
+    DEFAULT_OPTIMIZER_ENGINE,
+    ENGINE_EXTENDED,
+    ENGINE_STANDARD,
     CONF_SPOT_SENSOR,
     CONF_SOLCAST_TODAY,
     CONF_SOLCAST_TOMORROW,
@@ -154,6 +158,7 @@ from .const import (
     CONF_STALE_PUSH_RETRY_COUNT,
     DEFAULT_STALE_PUSH_RETRY_COUNT,
 )
+from .extended.config_flow import build_extended_schema, validate_extended
 from .rules import (
     UserRule,
     rule_errors,
@@ -354,6 +359,15 @@ def _build_schema(
     return vol.Schema(
         {
             **emaldo_field,
+            vol.Required(
+                CONF_OPTIMIZER_ENGINE,
+                default=d.get(CONF_OPTIMIZER_ENGINE, DEFAULT_OPTIMIZER_ENGINE),
+            ): vol.In(
+                {
+                    ENGINE_STANDARD: "Standard (upstream optimizer)",
+                    ENGINE_EXTENDED: "Extended (independently maintained optimizer)",
+                }
+            ),
             vol.Required(
                 CONF_PRICE_SOURCE,
                 default=price_source,
@@ -982,6 +996,9 @@ class BatteryOptimizerConfigFlow(ConfigFlow, domain=DOMAIN):
             if not errors:
                 await self.async_set_unique_id(DOMAIN)
                 self._abort_if_unique_id_configured()
+                if user_input.get(CONF_OPTIMIZER_ENGINE) == ENGINE_EXTENDED:
+                    self._user_input = user_input
+                    return await self.async_step_extended()
                 return self.async_create_entry(
                     title="Battery Optimizer",
                     data=user_input,
@@ -998,6 +1015,24 @@ class BatteryOptimizerConfigFlow(ConfigFlow, domain=DOMAIN):
             description_placeholders={
                 "currency": _locale_money_for(self.hass, None).currency
             },
+        )
+
+    async def async_step_extended(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Extra settings of the extended optimizer engine."""
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            errors = validate_extended(self.hass, user_input, self._user_input)
+            if not errors:
+                return self.async_create_entry(
+                    title="Battery Optimizer",
+                    data={**self._user_input, **user_input},
+                )
+        return self.async_show_form(
+            step_id="extended",
+            data_schema=build_extended_schema(user_input),
+            errors=errors,
         )
 
 
@@ -1044,6 +1079,9 @@ class BatteryOptimizerOptionsFlow(OptionsFlowWithConfigEntry):
                 )
             if is_blank(user_input.get(CONF_PRECHARGE_PUBLISH_HOUR)):
                 user_input.pop(CONF_PRECHARGE_PUBLISH_HOUR, None)
+            if user_input.get(CONF_OPTIMIZER_ENGINE) == ENGINE_EXTENDED:
+                self._init_input = user_input
+                return await self.async_step_extended()
             return self.async_create_entry(title="", data=user_input)
 
         # Merge config entry data with any existing options
@@ -1058,4 +1096,26 @@ class BatteryOptimizerOptionsFlow(OptionsFlowWithConfigEntry):
                 "currency": money.currency,
                 "effective_band": _band_placeholder(current),
             },
+        )
+
+    async def async_step_extended(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Extra settings of the extended optimizer engine."""
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            errors = validate_extended(self.hass, user_input, self._init_input)
+            if not errors:
+                return self.async_create_entry(
+                    title="", data={**self._init_input, **user_input}
+                )
+        current = {
+            **self.config_entry.data,
+            **self.config_entry.options,
+            **(user_input or {}),
+        }
+        return self.async_show_form(
+            step_id="extended",
+            data_schema=build_extended_schema(current),
+            errors=errors,
         )

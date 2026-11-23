@@ -1,11 +1,23 @@
 {
   "config": {
     "step": {
+      "extended": {
+        "title": "Laajennettu optimoija",
+        "description": "Asetukset, joita käyttää vain laajennettu optimointimoottori. Jätä kenttä tyhjäksi, jos haluat tavallisen toiminnan.",
+        "data": {
+          "sell_price_source": "Vientihinnan lähde (same = sama kuin tuontihinnan lähde)",
+          "sell_price_sensor": "Vientihinnan sensori tai input_number (kun lähde on sensor)",
+          "transfer_fee_sensor": "Siirtohinnan sensori (valinnainen; ohittaa kiinteän maksun)",
+          "excluded_load_power_sensor": "Tehosensori, joka vähennetään kotitalouden keskikulutuksesta (valinnainen, W tai kW)",
+          "fund_grid_exports": "Lataa verkosta myöhempää kannattavaa vientiä varten (vaatii pakkomyynnin)"
+        }
+      },
       "user": {
         "title": "Battery Optimizer",
         "description": "Määritä tietolähteet ja akun parametrit.",
         "data": {
           "emaldo_entry_id": "Emaldo-akkulaite",
+          "optimizer_engine": "Optimointimoottori (standard = alkuperäinen optimoija, extended = erikseen ylläpidetty laajennettu optimoija)",
           "price_source": "Hintatietolähde (emaldo = Emaldon sisäinen, sensor = ulkoinen anturi)",
           "spot_price_sensor": "Nordpoolin spot-hintasensori (vain kun lähteenä on 'sensor')",
           "currency": "Valuutan ohitus (ISO 4217, esim. SEK; tyhjä = automaattinen)",
@@ -64,6 +76,7 @@
       }
     },
     "error": {
+      "invalid_excluded_load": "Valitse W- tai kW-yksikön tehosensori, joka ei ole kotitalouden kokonaiskulutus.",
       "sensor_not_found": "Yhtä tai useampaa määritettyä anturia ei löytynyt.",
       "invalid_currency": "Valuutan on oltava 3-kirjaiminen koodi, kuten EUR, SEK, NOK tai DKK, tai tyhjä.",
       "invalid_params": "Virheelliset parametrit.",
@@ -77,6 +90,7 @@
   },
   "options": {
     "error": {
+      "invalid_excluded_load": "Valitse W- tai kW-yksikön tehosensori, joka ei ole kotitalouden kokonaiskulutus.",
       "sensor_not_found": "Yhtä tai useampaa määritettyä anturia ei löytynyt.",
       "invalid_currency": "Valuutan on oltava 3-kirjaiminen koodi, kuten EUR, SEK, NOK tai DKK, tai tyhjä.",
       "invalid_reserved_band": "Varattu kapasiteetti ei jätä käyttökelpoista aluetta: pienennä varauksia tai levennä Min/Max SoC -arvoja.",
@@ -84,11 +98,23 @@
       "reserved_exceeds_capacity": "Varaus ei voi olla suurempi kuin akun kapasiteetti."
     },
     "step": {
+      "extended": {
+        "title": "Laajennettu optimoija",
+        "description": "Asetukset, joita käyttää vain laajennettu optimointimoottori. Jätä kenttä tyhjäksi, jos haluat tavallisen toiminnan.",
+        "data": {
+          "sell_price_source": "Vientihinnan lähde (same = sama kuin tuontihinnan lähde)",
+          "sell_price_sensor": "Vientihinnan sensori tai input_number (kun lähde on sensor)",
+          "transfer_fee_sensor": "Siirtohinnan sensori (valinnainen; ohittaa kiinteän maksun)",
+          "excluded_load_power_sensor": "Tehosensori, joka vähennetään kotitalouden keskikulutuksesta (valinnainen, W tai kW)",
+          "fund_grid_exports": "Lataa verkosta myöhempää kannattavaa vientiä varten (vaatii pakkomyynnin)"
+        }
+      },
       "init": {
         "title": "Battery Optimizerin asetukset",
         "description": "Battery Optimizerin asetukset. Tehollinen suunniteltu SoC-alue: {effective_band}.",
         "data": {
           "emaldo_entry_id": "Emaldo-akkulaite",
+          "optimizer_engine": "Optimointimoottori (standard = alkuperäinen optimoija, extended = erikseen ylläpidetty laajennettu optimoija)",
           "price_source": "Hintatietolähde (emaldo = Emaldon sisäinen, sensor = ulkoinen anturi)",
           "spot_price_sensor": "Nordpoolin spot-hintasensori (vain kun lähteenä on 'sensor')",
           "currency": "Valuutan ohitus (ISO 4217, esim. SEK; tyhjä = automaattinen)",
@@ -249,6 +275,12 @@
       "vat_multiplier": {
         "name": "ALV-kerroin"
       },
+      "import_price": { "name": "Tuontihinta" },
+      "export_price": { "name": "Vientihinta" },
+      "current_transfer_fee": { "name": "Nykyinen siirtomaksu" },
+      "active_sale": { "name": "Aktiivisen myynnin päätös" },
+      "export_profit_forecast_today": { "name": "Arvioitu viennin nettotuotto tänään" },
+      "export_profit_yesterday": { "name": "Toteutunut viennin nettotuotto eilen" },
       "grid_transfer_fee": {
         "name": "Verkkosiirtomaksu"
       },

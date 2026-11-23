@@ -1,11 +1,23 @@
 {
   "config": {
     "step": {
+      "extended": {
+        "title": "Utvidet optimalisering",
+        "description": "Innstillinger som bare brukes av den utvidede optimaliseringsmotoren. La et felt stå tomt for standard oppførsel.",
+        "data": {
+          "sell_price_source": "Kilde for eksportpris (same = samme som importprisens kilde)",
+          "sell_price_sensor": "Eksportprissensor eller input_number (når kilden er sensor)",
+          "transfer_fee_sensor": "Sensor for nettleie (valgfri; erstatter fast avgift)",
+          "excluded_load_power_sensor": "Effektsensor som trekkes fra husholdningens gjennomsnittlige forbruk (valgfri, W eller kW)",
+          "fund_grid_exports": "Lad fra nettet for en senere lønnsom eksport (krever tvungen salg)"
+        }
+      },
       "user": {
         "title": "Battery Optimizer",
         "description": "Konfigurer datakilder og batteriparametere.",
         "data": {
           "emaldo_entry_id": "Emaldo-batterienhet",
+          "optimizer_engine": "Optimaliseringsmotor (standard = opprinnelig optimalisering, extended = separat vedlikeholdt utvidet optimalisering)",
           "price_source": "Datakilde for priser (emaldo = Emaldo internt, sensor = ekstern sensor)",
           "spot_price_sensor": "Nordpool spotprissensor (kun når kilden er 'sensor')",
           "currency": "Valutaoverstyring (ISO 4217, f.eks. NOK; tom = automatisk)",
@@ -64,6 +76,7 @@
       }
     },
     "error": {
+      "invalid_excluded_load": "Velg en effektsensor i W eller kW som ikke er husholdningens totale forbruk.",
       "sensor_not_found": "En eller flere konfigurerte sensorer ble ikke funnet.",
       "invalid_currency": "Valutaen må være en kode med 3 bokstaver, for eksempel EUR, SEK, NOK eller DKK, eller tom.",
       "invalid_params": "Ugyldige parametere.",
@@ -77,6 +90,7 @@
   },
   "options": {
     "error": {
+      "invalid_excluded_load": "Velg en effektsensor i W eller kW som ikke er husholdningens totale forbruk.",
       "sensor_not_found": "En eller flere konfigurerte sensorer ble ikke funnet.",
       "invalid_currency": "Valutaen må være en kode med 3 bokstaver, for eksempel EUR, SEK, NOK eller DKK, eller tom.",
       "invalid_reserved_band": "De reserverte kWh etterlater ingen brukbar bane: senk reservene eller utvid Min/Max SoC.",
@@ -84,11 +98,23 @@
       "reserved_exceeds_capacity": "En reserve kan ikke være større enn batterikapasiteten."
     },
     "step": {
+      "extended": {
+        "title": "Utvidet optimalisering",
+        "description": "Innstillinger som bare brukes av den utvidede optimaliseringsmotoren. La et felt stå tomt for standard oppførsel.",
+        "data": {
+          "sell_price_source": "Kilde for eksportpris (same = samme som importprisens kilde)",
+          "sell_price_sensor": "Eksportprissensor eller input_number (når kilden er sensor)",
+          "transfer_fee_sensor": "Sensor for nettleie (valgfri; erstatter fast avgift)",
+          "excluded_load_power_sensor": "Effektsensor som trekkes fra husholdningens gjennomsnittlige forbruk (valgfri, W eller kW)",
+          "fund_grid_exports": "Lad fra nettet for en senere lønnsom eksport (krever tvungen salg)"
+        }
+      },
       "init": {
         "title": "Battery Optimizer-innstillinger",
         "description": "Innstillinger for Battery Optimizer. Effektivt planlagt SoC-område: {effective_band}.",
         "data": {
           "emaldo_entry_id": "Emaldo-batterienhet",
+          "optimizer_engine": "Optimaliseringsmotor (standard = opprinnelig optimalisering, extended = separat vedlikeholdt utvidet optimalisering)",
           "price_source": "Datakilde for priser (emaldo = Emaldo internt, sensor = ekstern sensor)",
           "spot_price_sensor": "Nordpool spotprissensor (kun når kilden er 'sensor')",
           "currency": "Valutaoverstyring (ISO 4217, f.eks. NOK; tom = automatisk)",
@@ -249,6 +275,12 @@
       "vat_multiplier": {
         "name": "MVA-multiplikator"
       },
+      "import_price": { "name": "Importpris" },
+      "export_price": { "name": "Eksportpris" },
+      "current_transfer_fee": { "name": "Gjeldende nettleie" },
+      "active_sale": { "name": "Beslutning om pågående salg" },
+      "export_profit_forecast_today": { "name": "Estimert nettofortjeneste på eksport i dag" },
+      "export_profit_yesterday": { "name": "Realisert nettofortjeneste på eksport i går" },
       "grid_transfer_fee": {
         "name": "Nettleie"
       },

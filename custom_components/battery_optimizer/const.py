@@ -41,6 +41,13 @@ PRICE_SOURCE_EMALDO = "emaldo"
 PRICE_SOURCE_SENSOR = "sensor"
 DEFAULT_PRICE_SOURCE = PRICE_SOURCE_EMALDO
 
+# Optimizer engine.  "standard" is the upstream optimizer (default); "extended"
+# selects the independently maintained engine in the ``extended`` package.
+CONF_OPTIMIZER_ENGINE = "optimizer_engine"
+ENGINE_STANDARD = "standard"
+ENGINE_EXTENDED = "extended"
+DEFAULT_OPTIMIZER_ENGINE = ENGINE_STANDARD
+
 CONF_SOC_GUARD_INTERVAL = "soc_guard_interval"
 CONF_OPTIMIZER_INTERVAL = "optimizer_interval"
 CONF_EMALDO_ENTRY_ID = "emaldo_entry_id"

@@ -474,3 +474,55 @@ def _remove_fake_homeassistant():
     for name in list(sys.modules):
         if name == "homeassistant" or name.startswith("homeassistant."):
             del sys.modules[name]
+
+
+_EXT_PKG_NAME = "bext_pkg"
+
+
+def load_extended_optimizer():
+    """Return (extended_optimizer_module, const_module) loaded from the repo source.
+
+    The extended engine lives in ``battery_optimizer/extended/`` and uses
+    ``from ..const import ...`` plus sibling imports, so it is exec'd into a
+    fabricated ``bext_pkg`` / ``bext_pkg.extended`` pair around the real
+    ``const.py`` -- no Home Assistant needed, same approach as ``load_optimizer``.
+    """
+    if _EXT_PKG_NAME in sys.modules and hasattr(
+        sys.modules[_EXT_PKG_NAME], "ext_optimizer"
+    ):
+        pkg = sys.modules[_EXT_PKG_NAME]
+        return pkg.ext_optimizer, pkg.const
+
+    ext_dir = _SRC_DIR / "extended"
+    pkg = types.ModuleType(_EXT_PKG_NAME)
+    pkg.__path__ = []
+    sys.modules[_EXT_PKG_NAME] = pkg
+    ext = types.ModuleType(f"{_EXT_PKG_NAME}.extended")
+    ext.__path__ = []
+    sys.modules[f"{_EXT_PKG_NAME}.extended"] = ext
+    pkg.extended = ext
+
+    def _exec(target: str, filename: Path):
+        spec = spec_from_file_location(target, str(filename))
+        mod = module_from_spec(spec)
+        sys.modules[target] = mod
+        spec.loader.exec_module(mod)
+        return mod
+
+    pkg.const = _exec(f"{_EXT_PKG_NAME}.const", _SRC_DIR / "const.py")
+    # Order matters: optimizer imports solar_prefill/export_cycle at load and
+    # active_sale lazily (active_sale imports optimizer back).
+    for name in (
+        "const", "price_data", "export_profit", "solar_prefill", "export_cycle",
+        "optimizer", "active_sale",
+    ):
+        mod = _exec(f"{_EXT_PKG_NAME}.extended.{name}", ext_dir / f"{name}.py")
+        setattr(ext, name, mod)
+    pkg.ext_optimizer = ext.optimizer
+    return pkg.ext_optimizer, pkg.const
+
+
+def load_extended_module(name: str):
+    """Return a pure module of the extended package (e.g. `export_profit`)."""
+    load_extended_optimizer()
+    return getattr(sys.modules[f"{_EXT_PKG_NAME}.extended"], name)

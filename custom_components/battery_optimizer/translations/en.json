@@ -1,11 +1,23 @@
 {
   "config": {
     "step": {
+      "extended": {
+        "title": "Extended optimizer",
+        "description": "Settings used only by the extended optimizer engine. Leave a field empty to keep the standard behaviour.",
+        "data": {
+          "sell_price_source": "Export price source (same = use the import price source)",
+          "sell_price_sensor": "Export price sensor or input_number (when source is sensor)",
+          "transfer_fee_sensor": "Grid transfer price sensor (optional; overrides the fixed fee)",
+          "excluded_load_power_sensor": "Power sensor to subtract from average household load (optional, W or kW)",
+          "fund_grid_exports": "Charge from the grid for a later profitable export (requires forced sell)"
+        }
+      },
       "user": {
         "title": "Battery Optimizer",
         "description": "Configure data sources and battery parameters.",
         "data": {
           "emaldo_entry_id": "Emaldo battery device",
+          "optimizer_engine": "Optimizer engine (standard = upstream optimizer, extended = independently maintained optimizer with more price and export features)",
           "price_source": "Price data source (emaldo = Emaldo internal, sensor = external sensor)",
           "spot_price_sensor": "Nordpool spot price sensor (only when source is 'sensor')",
           "currency": "Currency override (ISO 4217 code, e.g. SEK; blank = auto)",
@@ -65,6 +77,7 @@
       }
     },
     "error": {
+      "invalid_excluded_load": "Select a power sensor in W or kW other than the total household load.",
       "sensor_not_found": "One or more configured sensors not found.",
       "invalid_currency": "Currency must be a 3-letter code such as EUR, SEK, NOK or DKK, or empty.",
       "invalid_params": "Invalid parameters.",
@@ -78,6 +91,7 @@
   },
   "options": {
     "error": {
+      "invalid_excluded_load": "Select a power sensor in W or kW other than the total household load.",
       "sensor_not_found": "One or more configured sensors not found.",
       "invalid_currency": "Currency must be a 3-letter code such as EUR, SEK, NOK or DKK, or empty.",
       "invalid_reserved_band": "The reserved capacity leaves no usable band: lower the reserves or widen Min/Max SoC.",
@@ -85,11 +99,23 @@
       "reserved_exceeds_capacity": "A reserve cannot be larger than the battery capacity."
     },
     "step": {
+      "extended": {
+        "title": "Extended optimizer",
+        "description": "Settings used only by the extended optimizer engine. Leave a field empty to keep the standard behaviour.",
+        "data": {
+          "sell_price_source": "Export price source (same = use the import price source)",
+          "sell_price_sensor": "Export price sensor or input_number (when source is sensor)",
+          "transfer_fee_sensor": "Grid transfer price sensor (optional; overrides the fixed fee)",
+          "excluded_load_power_sensor": "Power sensor to subtract from average household load (optional, W or kW)",
+          "fund_grid_exports": "Charge from the grid for a later profitable export (requires forced sell)"
+        }
+      },
       "init": {
         "title": "Battery Optimizer Options",
         "description": "Options for Battery Optimizer. Effective planned SoC band: {effective_band}.",
         "data": {
           "emaldo_entry_id": "Emaldo battery device",
+          "optimizer_engine": "Optimizer engine (standard = upstream optimizer, extended = independently maintained optimizer with more price and export features)",
           "price_source": "Price data source (emaldo = Emaldo internal, sensor = external sensor)",
           "spot_price_sensor": "Nordpool spot price sensor (only when source is 'sensor')",
           "currency": "Currency override (ISO 4217 code, e.g. SEK; blank = auto)",
@@ -215,6 +241,12 @@
       "solar_balance": { "name": "Solar Balance" },
       "user_schedule_chart": { "name": "User Schedule" },
       "vat_multiplier": { "name": "VAT Multiplier" },
+      "import_price": { "name": "Import Price" },
+      "export_price": { "name": "Export Price" },
+      "current_transfer_fee": { "name": "Current Grid Transfer Fee" },
+      "active_sale": { "name": "Active Sale Decision" },
+      "export_profit_forecast_today": { "name": "Estimated export net profit today" },
+      "export_profit_yesterday": { "name": "Realized export net profit yesterday" },
       "grid_transfer_fee": { "name": "Grid Transfer Fee" },
       "feed_in_sales_commission": { "name": "Feed-in Sales Commission" },
       "battery_wear_cost": { "name": "Battery Wear Cost" },
