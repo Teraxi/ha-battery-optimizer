@@ -162,3 +162,4 @@ the battery state of charge and effective prices.
 * **Export profit ledger:** a day closes when any sample arrives in the first minute
   after midnight, so a late midnight tick does not lose the previous day. The ledger
   file is rewritten only when its content changed.
+* **Legacy export value:** an export source stored as `import` (by the earlier separate-import-export-prices branch) is read as `same`.

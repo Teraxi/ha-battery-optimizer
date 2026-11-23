@@ -14,7 +14,13 @@ import voluptuous as vol
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.selector import EntitySelector, EntitySelectorConfig
 
-from ..const import CONF_LOAD_ENERGY_SENSOR, PRICE_SOURCE_EMALDO, PRICE_SOURCE_SENSOR
+from ..const import (
+    CONF_LOAD_ENERGY_SENSOR,
+    CONF_PRICE_SOURCE,
+    CONF_SPOT_SENSOR,
+    PRICE_SOURCE_EMALDO,
+    PRICE_SOURCE_SENSOR,
+)
 from .const import (
     CONF_EXCLUDED_LOAD_SENSOR,
     CONF_FUND_GRID_EXPORTS,
@@ -22,6 +28,7 @@ from .const import (
     CONF_SELL_PRICE_SOURCE,
     CONF_TRANSFER_FEE_SENSOR,
     SELL_PRICE_SOURCE_SAME,
+    normalize_sell_price_source,
 )
 
 SELL_PRICE_SOURCE_LABELS = {
@@ -39,7 +46,9 @@ def build_extended_schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
         {
             vol.Required(
                 CONF_SELL_PRICE_SOURCE,
-                default=d.get(CONF_SELL_PRICE_SOURCE, SELL_PRICE_SOURCE_SAME),
+                default=normalize_sell_price_source(
+                    d.get(CONF_SELL_PRICE_SOURCE, SELL_PRICE_SOURCE_SAME)
+                ),
             ): vol.In(SELL_PRICE_SOURCE_LABELS),
             vol.Optional(
                 CONF_SELL_PRICE_SENSOR,
@@ -70,6 +79,19 @@ def validate_extended(
     household load sensor as the excluded load).
     """
     errors: dict[str, str] = {}
+
+    if CONF_SELL_PRICE_SOURCE in values:
+        values[CONF_SELL_PRICE_SOURCE] = normalize_sell_price_source(
+            values[CONF_SELL_PRICE_SOURCE]
+        )
+
+    # The standard form validates the import sensor on first setup only; the
+    # options flow does not, so check it here when it is the selected source.
+    import_sensor = str(base.get(CONF_SPOT_SENSOR) or "").strip()
+    if base.get(CONF_PRICE_SOURCE) == PRICE_SOURCE_SENSOR and (
+        not import_sensor or not hass.states.get(import_sensor)
+    ):
+        errors["base"] = "sensor_not_found"
 
     sell_sensor = str(values.get(CONF_SELL_PRICE_SENSOR) or "").strip()
     values[CONF_SELL_PRICE_SENSOR] = sell_sensor

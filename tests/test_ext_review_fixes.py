@@ -339,3 +339,55 @@ def test_prefill_projection_reproduces_the_ordinary_plan(load):
         ), slot.index
         assert flow.imported == pytest.approx(slot.grid_import_kwh, abs=1e-6), slot.index
         assert flow.exported == pytest.approx(slot.grid_export_kwh, abs=1e-6), slot.index
+
+
+# ── entries saved by the earlier separate-import-export-prices branch ──────
+
+
+def test_legacy_import_value_means_same_as_import(monkeypatch):
+    from custom_components.battery_optimizer.extended import const as xc
+
+    states = {"sensor.market": _forecast_state()}
+    inst = _coordinator(monkeypatch, states)
+    inst.config_entry.options[xc.CONF_SELL_PRICE_SOURCE] = "import"
+    assert inst._parse_export_price_data() == inst._parse_price_data()
+    assert inst._parse_export_price_data()[0] == [0.2] * 96
+
+
+def test_legacy_value_is_normalized_in_the_form():
+    pytest.importorskip("homeassistant")
+    from custom_components.battery_optimizer.extended import const as xc
+    from custom_components.battery_optimizer.extended.config_flow import (
+        build_extended_schema,
+        validate_extended,
+    )
+
+    schema = build_extended_schema({xc.CONF_SELL_PRICE_SOURCE: "import"})
+    assert schema({})[xc.CONF_SELL_PRICE_SOURCE] == xc.SELL_PRICE_SOURCE_SAME
+    hass = SimpleNamespace(states=SimpleNamespace(get=lambda entity: True))
+    values = {xc.CONF_SELL_PRICE_SOURCE: "import"}
+    assert validate_extended(hass, values, {}) == {}
+    assert values[xc.CONF_SELL_PRICE_SOURCE] == xc.SELL_PRICE_SOURCE_SAME
+
+
+def test_import_sensor_is_validated_in_the_extended_step():
+    pytest.importorskip("homeassistant")
+    from custom_components.battery_optimizer import const as c
+    from custom_components.battery_optimizer.extended import const as xc
+    from custom_components.battery_optimizer.extended.config_flow import (
+        validate_extended,
+    )
+
+    hass = SimpleNamespace(
+        states=SimpleNamespace(get=lambda entity: entity == "sensor.market")
+    )
+    same = {xc.CONF_SELL_PRICE_SOURCE: "same"}
+    sensor_import = {c.CONF_PRICE_SOURCE: "sensor", c.CONF_SPOT_SENSOR: "sensor.market"}
+    assert validate_extended(hass, dict(same), sensor_import) == {}
+    missing = {c.CONF_PRICE_SOURCE: "sensor", c.CONF_SPOT_SENSOR: "sensor.gone"}
+    assert validate_extended(hass, dict(same), missing) == {"base": "sensor_not_found"}
+    blank = {c.CONF_PRICE_SOURCE: "sensor", c.CONF_SPOT_SENSOR: " "}
+    assert validate_extended(hass, dict(same), blank) == {"base": "sensor_not_found"}
+    # An Emaldo import source needs no sensor.
+    emaldo = {c.CONF_PRICE_SOURCE: "emaldo", c.CONF_SPOT_SENSOR: "sensor.gone"}
+    assert validate_extended(hass, dict(same), emaldo) == {}

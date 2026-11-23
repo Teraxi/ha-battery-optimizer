@@ -244,6 +244,7 @@ from .const import (
     CONF_TRANSFER_FEE_SENSOR,
     ENGINE_EXTENDED,
     SELL_PRICE_SOURCE_SAME,
+    normalize_sell_price_source,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -308,7 +309,9 @@ class ExtendedBatteryOptimizerCoordinator(BatteryOptimizerCoordinator):
         source; a missing independent curve never falls back to the import
         curve.
         """
-        source = self.config.get(CONF_SELL_PRICE_SOURCE, SELL_PRICE_SOURCE_SAME)
+        source = normalize_sell_price_source(
+            self.config.get(CONF_SELL_PRICE_SOURCE, SELL_PRICE_SOURCE_SAME)
+        )
         if source == SELL_PRICE_SOURCE_SAME:
             return self._parse_price_data()
         if source == PRICE_SOURCE_EMALDO:

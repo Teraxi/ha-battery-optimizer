@@ -18,6 +18,14 @@ CONF_FUND_GRID_EXPORTS = "fund_grid_exports"
 # behaviour) and is the default, including for entries saved before the
 # option existed, so switching engines never silently moves sell prices.
 SELL_PRICE_SOURCE_SAME = "same"
+# Value stored by the earlier separate-import-export-prices branch for the same
+# meaning; kept readable so entries saved by it keep working.
+SELL_PRICE_SOURCE_LEGACY_SAME = ("import",)
+
+
+def normalize_sell_price_source(value):
+    """Map legacy spellings of "same as import" to the current value."""
+    return SELL_PRICE_SOURCE_SAME if value in SELL_PRICE_SOURCE_LEGACY_SAME else value
 
 EXTENDED_CONF_KEYS = (
     CONF_SELL_PRICE_SOURCE,
