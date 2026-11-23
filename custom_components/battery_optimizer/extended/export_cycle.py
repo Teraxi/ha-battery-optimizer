@@ -16,6 +16,20 @@ class ExportCycle:
     margin: float
 
 
+def funded_export_blocker(cfg, solar, start, pv_flags) -> str | None:
+    """Why grid-funded export cannot be planned for this horizon, if it cannot.
+
+    The cycle model assumes every remaining slot is a net-import slot with the
+    PV switch on, so a slot with PV above base load anywhere in the horizon, or
+    a planned PV-sell slot, disables it for the whole horizon.
+    """
+    if any(p > cfg.base_load_kw for p in solar[start:]):
+        return "solar_surplus_in_horizon"
+    if not all(pv_flags[start:]):
+        return "pv_sell_planned"
+    return None
+
+
 def _charge_prefix(buy, chosen, start, first, initial, limit, low, cfg):
     """Replay integer charge commands and verify the floor before the sale."""
     drain = cfg.idle_drain_per_slot_kwh

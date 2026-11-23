@@ -31,7 +31,7 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
-from .price_data import parse_sensor_prices
+from .price_data import has_forecast_attributes, parse_sensor_prices
 
 from ..const import (
     DOMAIN,
@@ -248,6 +248,10 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
+# Shortest gap between forced replans caused by the sources this engine adds
+# (export sensor, Emaldo chart as export source, transfer tariff sensor).
+_EXTRA_PRICE_MIN_INTERVAL_S = 60
+
 
 class ExtendedBatteryOptimizerCoordinator(BatteryOptimizerCoordinator):
     """Coordinator for the extended optimizer engine."""
@@ -350,10 +354,11 @@ class ExtendedBatteryOptimizerCoordinator(BatteryOptimizerCoordinator):
             for s in dict.fromkeys(e for e in extra if e)
             if s.strip() and s.strip() not in tracked
         ]
+        self._cancel_extra_price_timer()
         if extra:
             self._unsub_listeners.append(
                 async_track_state_change_event(
-                    self.hass, extra, self._nordpool_state_change
+                    self.hass, extra, self._extra_price_change
                 )
             )
         for timing in (
@@ -367,7 +372,68 @@ class ExtendedBatteryOptimizerCoordinator(BatteryOptimizerCoordinator):
             )
 
     @callback
+    def _extra_price_change(self, event) -> None:
+        """Throttled replan trigger for the sources only this engine watches.
+
+        The first change runs at once; further changes inside the window are
+        coalesced into one trailing run, so a helper or tariff sensor that
+        updates every few seconds cannot force a full optimization and an
+        Emaldo push each time.
+        """
+        now = dt_util.now().timestamp()
+        wait = (
+            self.__dict__.get("_extra_price_last", 0.0)
+            + _EXTRA_PRICE_MIN_INTERVAL_S
+            - now
+        )
+        if wait <= 0:
+            self._extra_price_last = now
+            self._nordpool_state_change(event)
+            return
+        if self.__dict__.get("_extra_price_timer") is not None:
+            return
+
+        @callback
+        def _fire(_now) -> None:
+            self._extra_price_timer = None
+            self._extra_price_last = dt_util.now().timestamp()
+            self._nordpool_state_change(None)
+
+        self._extra_price_timer = async_call_later(self.hass, wait, _fire)
+
+    def _cancel_extra_price_timer(self) -> None:
+        timer = self.__dict__.get("_extra_price_timer")
+        if timer is not None:
+            timer()
+            self._extra_price_timer = None
+
+    def _uses_native_prices(self) -> bool:
+        sensors = [self.config.get(CONF_SPOT_SENSOR, "")]
+        if self._sell_source_is_sensor():
+            sensors.append(self.config.get(CONF_SELL_PRICE_SENSOR, ""))
+        return any(s and self._native_price_info(s) is not None for s in sensors)
+
+    @callback
+    def _checkpoint_callback(self, now: datetime) -> None:
+        """Checkpoint that first refreshes cached Nord Pool curves.
+
+        The base checkpoint decides whether to force a tomorrow plan from
+        ``_has_tomorrow_prices()``.  Native Nord Pool curves are cached by
+        optimizer runs only, so without a refresh that check cannot see prices
+        published since the last run.
+        """
+        if self._uses_native_prices():
+            self.hass.async_create_task(self._checkpoint_after_refresh(now))
+            return
+        super()._checkpoint_callback(now)
+
+    async def _checkpoint_after_refresh(self, now: datetime) -> None:
+        await self._refresh_native_price_forecasts()
+        super()._checkpoint_callback(now)
+
+    @callback
     def async_shutdown(self) -> None:
+        self._cancel_extra_price_timer()
         if self._unsub_sale_deadline is not None:
             self._unsub_sale_deadline()
             self._unsub_sale_deadline = None
@@ -554,12 +620,42 @@ class ExtendedBatteryOptimizerCoordinator(BatteryOptimizerCoordinator):
                 "0", {"data": rows, "unit_of_measurement": "currency/MWh"},
                 dt_util.now(), complete=True,
             )
+        if self._forecast_vanished(sensor_id, state.attributes):
+            return None, None
         return parse_sensor_prices(state.state, state.attributes, dt_util.now())
+
+    def _forecast_vanished(self, sensor_id: str, attributes) -> bool:
+        """True when a sensor that published a forecast now shows only a value.
+
+        A numeric state without forecast attributes is a fixed price, but a
+        market sensor that loses its attributes (reload, partial startup)
+        must not silently become a flat all-day price.  Once a forecast has
+        been seen for an entity, a later scalar-only state counts as missing
+        data until the forecast returns.
+        """
+        seen = self.__dict__.setdefault("_forecast_sensors", set())
+        if has_forecast_attributes(attributes):
+            seen.add(sensor_id)
+            self.__dict__.setdefault("_forecast_warned", set()).discard(sensor_id)
+            return False
+        if sensor_id not in seen:
+            return False
+        warned = self.__dict__.setdefault("_forecast_warned", set())
+        if sensor_id not in warned:
+            warned.add(sensor_id)
+            _LOGGER.warning(
+                "%s no longer publishes a price forecast; treating its prices as "
+                "unavailable instead of a flat price until the forecast returns",
+                sensor_id,
+            )
+        return True
 
     def _parse_transfer_prices(self) -> tuple[list[float] | None, list[float] | None]:
         sensor_id = self.config.get(CONF_TRANSFER_FEE_SENSOR, "").strip()
         state = self.hass.states.get(sensor_id) if sensor_id else None
         if state is None:
+            return None, None
+        if self._forecast_vanished(sensor_id, state.attributes):
             return None, None
         return parse_sensor_prices(state.state, state.attributes, dt_util.now(), complete=True)
 
@@ -781,9 +877,14 @@ class ExtendedBatteryOptimizerCoordinator(BatteryOptimizerCoordinator):
                 self._export_book = {"currency": self.currency}
             book = self._export_book
             self._sample_export_profit(book, now, self._build_battery_config())
-            await self.hass.async_add_executor_job(
-                marker_io.atomic_write_json, self._export_book_path, book
-            )
+            # Persist only a changed ledger: with unavailable counters the book
+            # stays identical and rewriting it every quarter-hour is wasted I/O.
+            payload = json.dumps(book, sort_keys=True)
+            if payload != self.__dict__.get("_export_book_written"):
+                await self.hass.async_add_executor_job(
+                    marker_io.atomic_write_json, self._export_book_path, book
+                )
+                self._export_book_written = payload
             self.async_update_listeners()
 
     def export_profit_report(self, yesterday: bool):

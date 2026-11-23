@@ -16,7 +16,7 @@ import math
 from dataclasses import dataclass, field
 
 from .solar_prefill import SolarPlan, plan_solar_prefill
-from .export_cycle import ExportCycle, plan_export_cycle
+from .export_cycle import ExportCycle, funded_export_blocker, plan_export_cycle
 from ..const import (
     SLOT_NO_OVERRIDE,
     SLOT_IDLE,
@@ -3543,6 +3543,13 @@ def optimize(
     sell_plan: dict[int, tuple[float, str]] = {}
     gate_margin = 0.0
     if (enable_forced_sell and not _probe and cfg.fund_grid_exports
+            and cfg.forced_sell_enabled):
+        blocker = funded_export_blocker(cfg, solar_15min, start_slot, pv_flags)
+        if blocker is not None and result.trace is not None:
+            # Say why the option did nothing; it is otherwise indistinguishable
+            # from "no profitable cycle exists".
+            result.trace["grid_funded_export_skipped"] = blocker
+    if (enable_forced_sell and not _probe and cfg.fund_grid_exports
             and cfg.forced_sell_enabled and all(pv_flags[start_slot:])):
         cycle = plan_export_cycle(
             buy_prices, sell_prices, solar_15min, cfg, start_slot, current_soc_kwh,
@@ -3596,15 +3603,22 @@ def optimize(
             pv_flags, gate_margin, enable_pv_strategy,
         )
         if solar_plan is not None:
-            return optimize(
+            rerun = optimize(
                 buy_prices, sell_prices, solar_15min, cfg, start_slot=start_slot,
                 initial_soc_pct=initial_soc_pct, emaldo_modes=emaldo_modes,
-                total_slots=n, enable_night_drain=enable_night_drain,
+                # Every slot from start_slot comes from the solar plan's flows, so
+                # the night-drain plateau probes (about six more full optimize()
+                # runs) would only repeat work whose result is overwritten.
+                total_slots=n, enable_night_drain=False,
                 solar_regime_engaged=solar_regime_engaged,
                 future_min_buy=future_min_buy, future_grid_charge_needed=future_grid_charge_needed,
                 solar_confidence_ratio=solar_confidence_ratio,
                 enable_forced_sell=False, _solar_plan=solar_plan,
             )
+            skipped = (result.trace or {}).get("grid_funded_export_skipped")
+            if skipped is not None and rerun.trace is not None:
+                rerun.trace["grid_funded_export_skipped"] = skipped
+            return rerun
     if sell_plan:
         sell_slots = sorted(sell_plan)
         result.sell_slots = sell_slots

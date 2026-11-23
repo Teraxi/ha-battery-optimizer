@@ -9,6 +9,21 @@ from typing import Any
 from ..const import SLOTS_PER_DAY
 
 
+FORECAST_KEYS = (
+    "data",
+    "raw_today",
+    "raw_tomorrow",
+    "today",
+    "tomorrow",
+    "tomorrow_valid",
+)
+
+
+def has_forecast_attributes(attributes: dict[str, Any]) -> bool:
+    """True when the entity publishes a price forecast, not just a current value."""
+    return any(key in attributes for key in FORECAST_KEYS)
+
+
 def numeric_price(value: Any) -> float | None:
     """Reject unavailable, empty and non-finite values, retaining zero/negative prices."""
     try:
@@ -43,15 +58,7 @@ def parse_sensor_prices(
         token in unit for token in ("snt", "cent", "c/kwh", "ct/kwh", "öre", "øre")
     )
     divisor = 1000.0 if "/mwh" in unit else 100.0 if cents else 1.0
-    forecast_keys = (
-        "data",
-        "raw_today",
-        "raw_tomorrow",
-        "today",
-        "tomorrow",
-        "tomorrow_valid",
-    )
-    if not any(key in attributes for key in forecast_keys):
+    if not has_forecast_attributes(attributes):
         price = numeric_price(state)
         if price is None:
             return None, None
@@ -99,9 +106,12 @@ def parse_sensor_prices(
     prices: list[float | None] = [None] * len(slots)
     for start, end, price in entries:
         end = end or start + duration
-        for slot, instant in enumerate(slots):
-            if start <= instant < end:
-                prices[slot] = price  # Later entries win if intervals overlap.
+        # First quarter at or after the interval start; walk until its end.
+        first = max(0, math.ceil((start - midnight).total_seconds() / 900))
+        for slot in range(first, len(slots)):
+            if slots[slot] >= end:
+                break
+            prices[slot] = price  # Later entries win if intervals overlap.
 
     def day_result(values: list[float | None]) -> list[float] | None:
         if complete and None in values:

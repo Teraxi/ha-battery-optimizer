@@ -114,5 +114,7 @@ def test_normal_pv_plan_kept_with_forecast_surplus():
     solar = [0.0] * 48 + [4.0] * 12 + [0.0] * 36
     args = ([0.12] * 96, [0.12] * 96, solar, cfg)
     funded = opt.optimize(*args, initial_soc_pct=50, enable_pv_strategy=True)
+    # The only difference is the diagnostic saying why no cycle was planned.
+    assert funded.trace.pop("grid_funded_export_skipped") == "solar_surplus_in_horizon"
     cfg.fund_grid_exports = False
     assert funded == opt.optimize(*args, initial_soc_pct=50, enable_pv_strategy=True)

@@ -36,6 +36,15 @@ def _delta(previous, current, key):
     return after - before
 
 
+# Longest gap between the pre-midnight sample and the first sample of the new
+# day that still counts as one boundary (a late midnight tick).
+_MIDNIGHT_GAP_S = 61
+
+
+def _in_first_minute(moment):
+    return moment.hour == 0 and moment.minute == 0
+
+
 def capture(book, now, sample, cfg):
     """Accumulate each observation once, closing the old local day before rollover."""
     day = now.date().isoformat()
@@ -44,7 +53,9 @@ def capture(book, now, sample, cfg):
     if old and stamp <= old["timestamp"]:
         return
     previous_day = book.get("date")
-    midnight = now.hour == now.minute == now.second == 0
+    # The midnight tick may run late (busy event loop, slow I/O); any sample in
+    # the first minute of the day still closes the previous day.
+    midnight = now.hour == 0 and now.minute == 0
     changed_day = previous_day != day
     if not previous_day:
         book.update(
@@ -54,15 +65,14 @@ def capture(book, now, sample, cfg):
     if ok:
         imported = sample["import"] - old["import"]
         exported = sample["export"] - old["export"]
-        if changed_day and midnight and stamp - old["timestamp"] <= 1:
+        if changed_day and midnight and stamp - old["timestamp"] <= _MIDNIGHT_GAP_S:
             # Daily counters may already have reset. The preceding 23:59:59
             # reading contains their final observable value before the reset.
             imported = max(0.0, imported)
             exported = max(0.0, exported)
         if (
             not changed_day
-            and datetime.fromtimestamp(old["timestamp"], now.tzinfo).time().isoformat()
-            == "00:00:00"
+            and _in_first_minute(datetime.fromtimestamp(old["timestamp"], now.tzinfo))
         ):
             # Some daily meters publish their reset just after the boundary.
             if imported < 0:

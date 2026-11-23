@@ -139,3 +139,26 @@ the battery state of charge and effective prices.
 | Current Grid Transfer Fee | The transfer fee in force now (fixed, or the external tariff). The standard Grid Transfer Fee sensor still shows the fixed fee. |
 | Active Sale Decision | The `continue` / `stop` decision of the active-sale comparison. |
 | Estimated export net profit today / Realized export net profit yesterday | See above. |
+
+## Behaviour notes
+
+* **Vanished forecasts:** a numeric price sensor without forecast attributes is a
+  fixed price, but once a sensor has published a forecast, a later state without
+  one (integration reload, partial startup) is treated as missing data until the
+  forecast returns. It never becomes a flat all-day price. A warning is logged once.
+* **Replan throttling:** changes of the sources this engine adds (export sensor,
+  Emaldo chart as export source, transfer tariff sensor) trigger a replan at once,
+  then at most once per minute; changes in between are coalesced into one run.
+* **Native Nord Pool checkpoint:** the periodic checkpoint refreshes the cached
+  Nord Pool curves before deciding whether tomorrow's plan must be forced.
+* **Grid-funded export limits:** the cycle search assumes every remaining slot is a
+  net-import slot with the PV switch on. Any slot with PV above the base load, or a
+  planned PV-sell slot, anywhere in the horizon disables it for that run. The
+  reason is recorded in the run trace as `grid_funded_export_skipped`
+  (`solar_surplus_in_horizon` or `pv_sell_planned`).
+* **Forced-sell budget:** like the standard engine, `forced_sell_max_kwh_pd` caps each
+  planned sale window; the active-sale comparison only continues a sale the device
+  already holds, so it cannot restage a larger target.
+* **Export profit ledger:** a day closes when any sample arrives in the first minute
+  after midnight, so a late midnight tick does not lose the previous day. The ledger
+  file is rewritten only when its content changed.
