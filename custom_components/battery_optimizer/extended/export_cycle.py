@@ -1,4 +1,4 @@
-"""Grid-funded export on net-import days. Prices are per metered AC kWh."""
+"""Grid-funded battery export with forecast PV and household demand. Prices are per metered AC kWh."""
 
 from __future__ import annotations
 
@@ -16,21 +16,7 @@ class ExportCycle:
     margin: float
 
 
-def funded_export_blocker(cfg, solar, start, pv_flags) -> str | None:
-    """Why grid-funded export cannot be planned for this horizon, if it cannot.
-
-    The cycle model assumes every remaining slot is a net-import slot with the
-    PV switch on, so a slot with PV above base load anywhere in the horizon, or
-    a planned PV-sell slot, disables it for the whole horizon.
-    """
-    if any(p > cfg.base_load_kw for p in solar[start:]):
-        return "solar_surplus_in_horizon"
-    if not all(pv_flags[start:]):
-        return "pv_sell_planned"
-    return None
-
-
-def _charge_prefix(buy, chosen, start, first, initial, limit, low, cfg):
+def _charge_prefix(buy, sell, net_load, chosen, start, first, initial, limit, low, cfg):
     """Replay integer charge commands and verify the floor before the sale."""
     drain = cfg.idle_drain_per_slot_kwh
     charge_rate = cfg.max_charge_per_slot_kwh
@@ -44,11 +30,16 @@ def _charge_prefix(buy, chosen, start, first, initial, limit, low, cfg):
                 charge_rate,
                 max(0.0, limit - energy + drain) / cfg.charge_efficiency,
             )
-            cost += buy[i] * draw
+            solar_draw = min(draw, max(0.0, -net_load[i]))
+            cost += buy[i] * (draw - solar_draw) + sell[i] * solar_draw
             energy += draw * cfg.charge_efficiency
             if draw > 1e-8:
                 charges[i] = int(cfg.soc_max)
                 last_draw = draw
+        elif net_load[i] < 0:
+            absorbed = min(-net_load[i], charge_rate, max(0.0, limit - energy) / cfg.charge_efficiency)
+            energy += absorbed * cfg.charge_efficiency
+            cost += absorbed * sell[i]
         energy -= drain
         if i in charges:
             last_soc = energy
@@ -68,7 +59,7 @@ def plan_export_cycle(
     competing plan at the cost of replenishing it; never credit leftover buys.
     """
     n = len(buy)
-    if start >= n or any(p > cfg.base_load_kw for p in solar[start:]):
+    if start >= n:
         return None
     limit = cfg.capacity_kwh * int(cfg.soc_max) / 100
     low = cfg.capacity_kwh * cfg.soc_min / 100
@@ -82,6 +73,7 @@ def plan_export_cycle(
 
     drain = cfg.idle_drain_per_slot_kwh
     net_load = [(cfg.base_load_kw - p) * SLOT_DURATION_HOURS for p in solar]
+    surplus_slots = [i for i in range(start, n) if net_load[i] < 0]
     cheapest = min(buy[start:])
     replacement = max(0.0, cheapest) / cfg.charge_efficiency
     wear = cfg.wear_cost_per_kwh
@@ -119,7 +111,7 @@ def plan_export_cycle(
                 ):
                     break
                 chosen.add(idx)
-            prefix = _charge_prefix(buy, chosen, start, first, initial, limit, low, cfg)
+            prefix = _charge_prefix(buy, sell, net_load, chosen, start, first, initial, limit, low, cfg)
             if prefix is None:
                 continue
             energy, cost, charges, last_draw, last_soc = prefix
@@ -130,7 +122,7 @@ def plan_export_cycle(
             end = min(n, (first // SLOTS_PER_DAY + 1) * SLOTS_PER_DAY)
             for i in range(first, end):
                 spare = rate - net_load[i]
-                if spare <= 0 or sell[i] < cfg.forced_sell_min_price:
+                if net_load[i] < 0 or spare <= 0 or sell[i] < cfg.forced_sell_min_price:
                     break
                 # The final reserve must survive standby up to this slot too.
                 headroom = min(
@@ -154,6 +146,13 @@ def plan_export_cycle(
                     income = revenue + last * sell[i]
                     savings = avoided + runtime * net_load[i] * buy[i]
                     final = energy - cycled - drain * (n - first)
+                    displaced_export = 0.0
+                    for j in surplus_slots:
+                        if j > i:
+                            before = final + drain * (n - j)
+                            absorbed = min(-net_load[j], charge_rate, max(0.0, limit - before) / cfg.charge_efficiency)
+                            final += absorbed * cfg.charge_efficiency
+                            displaced_export += absorbed * sell[j]
                     # The final charging quarter can stop at an integer SoC
                     # target instead of buying a full block for a partial sale.
                     saving = 0.0
@@ -163,7 +162,7 @@ def plan_export_cycle(
                         spare_energy = min(
                             final - max(low, keep_soc), headroom - cycled
                         )
-                        if spare_energy > 0 and buy[last_buy] > 0:
+                        if not surplus_slots and spare_energy > 0 and buy[last_buy] > 0:
                             target = max(
                                 1,
                                 ceil(
@@ -182,6 +181,7 @@ def plan_export_cycle(
                         - cost
                         + saving
                         - cycled * wear
+                        - displaced_export
                         - keep_profit
                         - max(0.0, keep_soc - final) * replacement
                     )

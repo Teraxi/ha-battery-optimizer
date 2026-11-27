@@ -295,13 +295,10 @@ def test_solar_prefill_rerun_does_not_repeat_night_drain_probes(monkeypatch):
     assert rerun[0]["enable_night_drain"] is False
 
 
-def test_funded_export_records_why_it_was_skipped():
-    skipped = sunny_day(0.5)
-    assert skipped.trace["grid_funded_export_skipped"] == "solar_surplus_in_horizon"
-    assert "grid_funded_export_skipped" not in sunny_day(0.5, load=5).trace
-    assert "grid_funded_export_skipped" not in sunny_day(
-        0.5, fund_grid_exports=False
-    ).trace
+def test_surplus_routes_compete_with_grid_funding():
+    result = sunny_day(0.5)
+    assert "solar_prefill" in result.trace
+    assert not result.sell_slots
 
 
 # ── solar-prefill projection must stay in step with optimize() ─────────────

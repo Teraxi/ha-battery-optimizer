@@ -99,3 +99,12 @@ def test_planned_direct_solar_export_credits_only_household_surplus():
     )
     result = SimpleNamespace(slots=[row], trace={}, thirdparty_pv_slots=[False])
     assert ep.forecast(book, result, midnight, cfg) == pytest.approx(0.25)
+
+
+@pytest.mark.parametrize("seconds,complete", [(901, True), (1800, False)])
+def test_meter_tick_jitter(seconds, complete):
+    book = {}
+    ep.capture(book, midnight, meter(10), cfg)
+    ep.capture(book, midnight + timedelta(seconds=seconds), meter(9, sold=0.9), cfg)
+    assert book["complete"] is complete
+    assert book["revenue"] == pytest.approx(0.225 if complete else 0)

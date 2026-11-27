@@ -84,7 +84,12 @@ household plan. The configured minimum profit applies per exported kWh. The
 search models one continuous manual sale on one calendar day at full inverter
 output. It is a bounded search, not a global optimizer.
 
-On net-import days this handles battery exports. With a forecast solar surplus
+A forecast surplus in another quarter does not prevent a battery sale. The
+planner accounts for stored PV and its forgone export revenue. Battery-sale
+windows use quarters with net household demand or balanced production,
+reserve inverter output for the house, and account for discharge losses.
+The stored-energy planner compares alternative window starts before staging
+a target. With a forecast solar surplus
 there is also a PV alternative: before each surplus period, compare keeping the
 household schedule, omitting ordinary grid charging, and buying in increasing
 numbers of the cheapest earlier quarters. New PV-switch windows require the PV

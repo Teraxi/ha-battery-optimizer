@@ -16,7 +16,7 @@ import math
 from dataclasses import dataclass, field
 
 from .solar_prefill import SolarPlan, plan_solar_prefill
-from .export_cycle import ExportCycle, funded_export_blocker, plan_export_cycle
+from .export_cycle import ExportCycle, plan_export_cycle
 from ..const import (
     SLOT_NO_OVERRIDE,
     SLOT_IDLE,
@@ -1358,6 +1358,15 @@ def _correct_soc_for_pv_sells(
         sp.soc_after = round(soc / cap * 100.0, 1)
 
 
+def _extra_sell_draw(slot, sold, cfg):
+    """Additional stored kWh consumed against the ordinary slot plan."""
+    power = cfg.max_discharge_kw
+    load = max(0.0, slot.load_kw - slot.solar_kw)
+    hours = sold / (power - load)
+    ordinary_draw = slot.cycled_kwh * cfg.discharge_efficiency
+    return hours * (power / cfg.discharge_efficiency - ordinary_draw / SLOT_DURATION_HOURS)
+
+
 def _correct_soc_for_forced_sell(
     slots: list[SlotPlan],
     sell_plan: dict[int, tuple[float, str]],
@@ -1391,7 +1400,8 @@ def _correct_soc_for_forced_sell(
     for sp in sorted(slots, key=lambda s: s.index):
         if sp.index < first_sell:
             continue
-        withdrawn_kwh += sell_plan.get(sp.index, (0.0, ""))[0]
+        if sp.index in sell_plan:
+            withdrawn_kwh += _extra_sell_draw(sp, sell_plan[sp.index][0], cfg)
         soc = sp.soc_after * cap / 100.0 - withdrawn_kwh
         # A withdrawal only lowers the trajectory, so soc_max cannot be
         # exceeded; the floor clamp is a guard, not an expected outcome — the
@@ -1482,23 +1492,14 @@ def _plan_forced_sell_slots(
         # fill the same inverter slot — cap the sell at the remainder.
         # A full-rate drain leaves nothing to sell and terminates the window
         # (discharge right after the sell block = re-buy at the spike price).
-        slot_cap = per_slot_kwh
-        if result_slots[s].action == "discharge":
-            net_load_kw = result_slots[s].load_kw - result_slots[s].solar_kw
-            if net_load_kw <= 0:
-                # Solar-surplus discharge slot: battery busy absorbing solar.
-                # Greedy drain already fills the slot; nothing sellable.
-                if window_open:
-                    break
-                continue
-            slot_discharge_kwh = (
-                min(net_load_kw, cfg.max_discharge_kw) * SLOT_DURATION_HOURS
-            )
-            slot_cap = max(0.0, per_slot_kwh - slot_discharge_kwh)
-            if slot_cap < 0.05:
-                if window_open:
-                    break
-                continue
+        if window_open and s % SLOTS_PER_DAY == 0:
+            break
+        load = max(0.0, result_slots[s].load_kw - result_slots[s].solar_kw)
+        slot_cap = per_slot_kwh - load * SLOT_DURATION_HOURS
+        if result_slots[s].solar_kw > cfg.base_load_kw or slot_cap < 0.05 or result_slots[s].action in ("charge", "charge_floor"):
+            if window_open:
+                break
+            continue
         if s + 1 >= total_slots:
             # Final slot: no recharge opportunity remains.
             continue
@@ -1546,13 +1547,14 @@ def _plan_forced_sell_slots(
             if window_open:
                 break
             continue
-        step = min(slot_cap, available_kwh, budget_kwh - total_battery)
+        draw_per_export = _extra_sell_draw(result_slots[s], 1.0, cfg)
+        step = min(slot_cap, available_kwh / draw_per_export, budget_kwh - total_battery)
         if step <= 0.05:
             break
         window_open = True
         sell_plan[s] = (step, "battery")
         total_battery += step
-        withdrawn_kwh += step
+        withdrawn_kwh += step * draw_per_export
 
     return sell_plan
 
@@ -1683,10 +1685,16 @@ def _gate_forced_sell_plan(
         return sell_plan, 0.0
     tail_start = max(sell_plan) + 1
 
-    withdrawn_kwh = sum(kwh for kwh, _tier in sell_plan.values())
+    withdrawn_kwh = sum(_extra_sell_draw(result_slots[s], kwh, cfg) for s, (kwh, _) in sell_plan.items())
     revenue = sum(
         sell_prices[s] * kwh for s, (kwh, _tier) in sell_plan.items()
     )
+    avoided_purchase = 0.0
+    for index, (sold, _) in sell_plan.items():
+        slot = result_slots[index]
+        load = max(0.0, slot.load_kw - slot.solar_kw)
+        running_fraction = sold / ((cfg.max_discharge_kw - load) * SLOT_DURATION_HOURS)
+        avoided_purchase += running_fraction * slot.grid_import_kwh * buy_prices[index]
     pct_per_kwh = 100.0 / cfg.capacity_kwh
     # ``result_slots`` still carries the PRE-correction trajectory here --
     # ``_correct_soc_for_forced_sell`` runs after this gate -- so this reading is
@@ -1725,6 +1733,7 @@ def _gate_forced_sell_plan(
             **passthrough,
         )
         - revenue
+        - avoided_purchase
         + cfg.wear_cost_per_kwh * withdrawn_kwh
     )
 
@@ -3070,7 +3079,12 @@ def optimize(
                 actual_bat_kwh = min(max_bat_kwh, headroom)
                 soc = min(soc + actual_bat_kwh - idle_drain, soc_max_kwh)
                 actual_grid_kwh = actual_bat_kwh / cfg.charge_efficiency
-                actual_grid_kwh += max(net_loads[s], 0) * SLOT_DURATION_HOURS
+                if _export_cycle is not None:
+                    meter = actual_grid_kwh + net_loads[s] * SLOT_DURATION_HOURS
+                    actual_grid_kwh = max(0.0, meter)
+                    export_kwh = max(0.0, -meter)
+                else:
+                    actual_grid_kwh += max(net_loads[s], 0) * SLOT_DURATION_HOURS
                 n_charge += 1
             elif action == "force_sell" and _export_cycle is not None:
                 sold = _export_cycle.sell[s]
@@ -3540,67 +3554,59 @@ def optimize(
     # winning +68.449 SEK net (reviewer measured 35 plans / +51.22 at the gate
     # commit 308fd7a, before the guard fix and B3-B6).  Kept, and reported here
     # rather than smuggled in under a recursion-guard label.
+    cycle = None
     sell_plan: dict[int, tuple[float, str]] = {}
     gate_margin = 0.0
     if (enable_forced_sell and not _probe and cfg.fund_grid_exports
             and cfg.forced_sell_enabled):
-        blocker = funded_export_blocker(cfg, solar_15min, start_slot, pv_flags)
-        if blocker is not None and result.trace is not None:
-            # Say why the option did nothing; it is otherwise indistinguishable
-            # from "no profitable cycle exists".
-            result.trace["grid_funded_export_skipped"] = blocker
-    if (enable_forced_sell and not _probe and cfg.fund_grid_exports
-            and cfg.forced_sell_enabled and all(pv_flags[start_slot:])):
         cycle = plan_export_cycle(
             buy_prices, sell_prices, solar_15min, cfg, start_slot, current_soc_kwh,
             result_slots[-1].soc_after * cfg.capacity_kwh / 100.0,
             result.net_profit, _FORCED_SELL_RESERVE_KWH,
         )
-        if cycle is not None:
-            # Use the same slot accounting and day-boundary snapshots as the
-            # ordinary plan. This pass materializes the chosen cycle only.
-            return optimize(
-                buy_prices, sell_prices, solar_15min, cfg, start_slot=start_slot,
-                initial_soc_pct=initial_soc_pct, emaldo_modes=emaldo_modes,
-                total_slots=n, enable_night_drain=False, enable_forced_sell=False,
-                _export_cycle=cycle,
-            )
     if enable_forced_sell and not _probe:
-        sell_plan = _plan_forced_sell_slots(
-            cfg,
-            buy_prices,
-            sell_prices,
-            result_slots,
-            start_slot,
-            cfg.round_trip_factor,
-            total_slots=n,
-        )
-        # D1: the closed-form c_ref gate inside the planner only nominates
-        # candidates now.  The decision re-plans the tail of the day from the
-        # SoC the window leaves behind, and keeps the sale only when that is
-        # strictly cheaper than keeping the energy -- which is the one thing
-        # "cheapest forward buy" cannot see.
-        sell_plan, gate_margin = _gate_forced_sell_plan(
-            cfg,
-            buy_prices,
-            sell_prices,
-            solar_15min,
-            result_slots,
-            sell_plan,
-            enable_pv_strategy=enable_pv_strategy,
-            emaldo_modes=emaldo_modes,
-            case_a_floor=case_a_floor,
-            solar_regime_engaged=solar_regime_engaged,
-            future_min_buy=future_min_buy,
-            future_grid_charge_needed=future_grid_charge_needed,
-            solar_confidence_ratio=solar_confidence_ratio,
-            total_slots=n,
-        )
+        cursor = start_slot
+        while cursor < n:
+            candidate = _plan_forced_sell_slots(
+                cfg,
+                buy_prices,
+                sell_prices,
+                result_slots,
+                cursor,
+                cfg.round_trip_factor,
+                total_slots=n,
+            )
+            # D1: the closed-form c_ref gate inside the planner only nominates
+            # candidates now.  The decision re-plans the tail of the day from the
+            # SoC the window leaves behind, and keeps the sale only when that is
+            # strictly cheaper than keeping the energy -- which is the one thing
+            # "cheapest forward buy" cannot see.
+            if not candidate:
+                break
+            cursor = min(candidate) + 1
+            candidate, margin = _gate_forced_sell_plan(
+                cfg,
+                buy_prices,
+                sell_prices,
+                solar_15min,
+                result_slots,
+                candidate,
+                enable_pv_strategy=enable_pv_strategy,
+                emaldo_modes=emaldo_modes,
+                case_a_floor=case_a_floor,
+                solar_regime_engaged=solar_regime_engaged,
+                future_min_buy=future_min_buy,
+                future_grid_charge_needed=future_grid_charge_needed,
+                solar_confidence_ratio=solar_confidence_ratio,
+                total_slots=n,
+            )
+            if margin > gate_margin:
+                sell_plan, gate_margin = candidate, margin
     if (enable_forced_sell and not _probe and cfg.fund_grid_exports
             and cfg.forced_sell_enabled and not cfg.pv_cut_when_full):
         solar_plan = plan_solar_prefill(
             result_slots, solar_15min, cfg, start_slot, current_soc_kwh,
-            pv_flags, gate_margin, enable_pv_strategy,
+            pv_flags, max(gate_margin, cycle.margin if cycle else 0.0), enable_pv_strategy,
         )
         if solar_plan is not None:
             rerun = optimize(
@@ -3615,10 +3621,16 @@ def optimize(
                 solar_confidence_ratio=solar_confidence_ratio,
                 enable_forced_sell=False, _solar_plan=solar_plan,
             )
-            skipped = (result.trace or {}).get("grid_funded_export_skipped")
-            if skipped is not None and rerun.trace is not None:
-                rerun.trace["grid_funded_export_skipped"] = skipped
             return rerun
+    if cycle is not None and cycle.margin >= gate_margin:
+        # Use the same slot accounting and day-boundary snapshots as the
+        # ordinary plan. This pass materializes the chosen cycle only.
+        return optimize(
+            buy_prices, sell_prices, solar_15min, cfg, start_slot=start_slot,
+            initial_soc_pct=initial_soc_pct, emaldo_modes=emaldo_modes,
+            total_slots=n, enable_night_drain=False, enable_forced_sell=False,
+            _export_cycle=cycle,
+        )
     if sell_plan:
         sell_slots = sorted(sell_plan)
         result.sell_slots = sell_slots

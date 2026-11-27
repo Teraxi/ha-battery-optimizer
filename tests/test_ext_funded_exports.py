@@ -114,7 +114,36 @@ def test_normal_pv_plan_kept_with_forecast_surplus():
     solar = [0.0] * 48 + [4.0] * 12 + [0.0] * 36
     args = ([0.12] * 96, [0.12] * 96, solar, cfg)
     funded = opt.optimize(*args, initial_soc_pct=50, enable_pv_strategy=True)
-    # The only difference is the diagnostic saying why no cycle was planned.
-    assert funded.trace.pop("grid_funded_export_skipped") == "solar_surplus_in_horizon"
     cfg.fund_grid_exports = False
     assert funded == opt.optimize(*args, initial_soc_pct=50, enable_pv_strategy=True)
+
+
+def test_november_27_mixed_solar_export():
+    from pathlib import Path
+    import json
+
+    rows = json.loads(Path(__file__).with_name("ext_prices_20261127.json").read_text())
+    buy, sell, solar = map(list, zip(*rows))
+    cfg = config(capacity_kwh=40, soc_min=10, soc_max=100, max_charge_kw=10,
+                 max_discharge_kw=10, base_load_kw=2.494, idle_power_kw=0.1,
+                 forced_sell_max_kwh_pd=35, forced_sell_min_profit=0.05)
+    result = opt.optimize(buy, sell, solar, cfg, start_slot=11,
+                          initial_soc_pct=12, enable_pv_strategy=True)
+    assert result.sell_target_kwh > 0 and result.sell_profit > 0
+    assert any(s.action == "charge" for s in result.slots[11:28])
+    for i in result.sell_slots:
+        assert result.slots[i].sell_kwh <= (10 - max(0, 2.494 - solar[i])) / 4 + 1e-8
+
+
+def test_stored_energy_prefers_later_peak_and_respects_meter_capacity():
+    cfg = config(capacity_kwh=40, base_load_kw=2.5, fund_grid_exports=False,
+                 max_discharge_kw=10, forced_sell_max_kwh_pd=35)
+    sell = [0.01] * 96
+    sell[32:36] = [0.26] * 4
+    sell[48:52] = [0.60] * 4
+    result = opt.optimize([0.1] * 96, sell, [0.0] * 96, cfg, initial_soc_pct=90)
+    assert result.sell_slots == list(range(48, 52))
+    assert result.sell_target_kwh == pytest.approx(7.5)
+    assert result.slots[47].soc_after - result.slots[51].soc_after == pytest.approx(
+        10 / cfg.discharge_efficiency / cfg.capacity_kwh * 100
+    )

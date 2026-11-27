@@ -61,7 +61,9 @@ def capture(book, now, sample, cfg):
         book.update(
             date=day, revenue=0.0, cost=0.0, complete=midnight and sample is not None
         )
-    ok = old is not None and sample is not None and stamp - old["timestamp"] <= 900
+    ok = old is not None and sample is not None and stamp - old["timestamp"] <= 905 and (
+        stamp // 900 - old["timestamp"] // 900 <= 1
+    )
     if ok:
         imported = sample["import"] - old["import"]
         exported = sample["export"] - old["export"]
